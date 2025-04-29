@@ -1,125 +1,177 @@
-# AI-Auto-Video-Generator
-An AI-powered storytelling video generator that takes user input as a story prompt, generates a story using OpenAI's GPT-3, creates images using OpenAI's DALL-E, adds voiceover using ElevenLabs API, and combines the elements into a video.
+# **AutoVideo v1 — AI Auto Video Generator**
 
+A fully automated, AI-powered storytelling video generator.
 
+- Generates a story from a text prompt using **OpenAI GPT**.
+- Creates images using **OpenAI DALL-E**.
+- Adds voiceover using **ElevenLabs**.
+- Assembles final video output using **MoviePy** and **FFmpeg**.
+
+**V1 Focus:**  
+Create a video autonomously, containerize it, deploy it to the cloud, and automatically upload to **YouTube**.
+
+---
+
+# ✨ **Demo Examples**
 [![Example 0](https://img.youtube.com/vi/hV4t2yW-RUk/0.jpg)](https://www.youtube.com/watch?v=hV4t2yW-RUk)
 [![Example 1](https://img.youtube.com/vi/Vzcras5Snyo/0.jpg)](https://www.youtube.com/watch?v=Vzcras5Snyo)
 
+---
 
-### To DO: New project can be found at https://github.com/BB31420/loveListLace
+# 🚀 **Project Goals (2025 Rollout)**
 
+| Phase | Goal |
+|:---|:---|
+| V1 | Generate basic videos, upload to YouTube via automation |
+| V2 | Improve video quality (AI scene analysis, dynamic editing) |
+| V3 | Inject trend detection to create timely, viral content |
+| Beyond | Expand to TikTok, Instagram, trend scraping, analytics |
 
-## Getting Started
+---
 
-These instructions will help you set up the project on your local machine.
+# 📦 **Getting Started**
 
-### Prerequisites
+## 1. Prerequisites
 
-- Python 3.6 or higher
-- Pip (Python package manager)
-- FFmpeg (a command-line program for video processing)
+- Python 3.8+
+- Docker + Docker Compose (for containerization)
+- GitHub account (for repo + CI/CD)
+- Google Cloud / YouTube API credentials
+- FFmpeg installed locally (`brew install ffmpeg` or `apt install ffmpeg`)
 
-### Create Virtual Environment
-This helps keep packages seperate to avoid conflicts. Use the venv when running the code and before installing the required packages. The code requires openai 0.28, which is specified in the requirements.txt. 
+---
 
-1. Navigate to the project directory with ```cd``` ```ls -la```
- * Windows: ```python -m venv .venv``` then ```Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser```
- * Linux: ```python3 -m venv .venv```
-3. Activate the venv
- * Windows: ```venv\Scripts\Activate.ps1```
- * Linux: ```source .venv/bin/activate```
-4. Close venv when finished running main.py, it needs to be active to use the packages ```deactivate```
+## 2. Environment Setup
 
+```bash
+# Clone the repository
+git clone https://github.com/YOURNAMEHERE/AutoVideo.git
+cd AutoVideo
 
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
-### Installation
+# Install dependencies
+pip install -r requirements.txt
 
-1. Clone the repository: ```git clone https://github.com/BB31420/AI-Auto-Video-Generator.git```
-2. Navigate to the project directory: ```cd AI-Auto-Video-Generator```
-3. Install the required Python packages: ```pip install -r requirements.txt```
-4. Install FFmpeg:
-- On macOS, you can use Homebrew: brew install ffmpeg
-- On Linux, you can use your package manager (e.g., apt-get install ffmpeg on Ubuntu)
-- On Windows, you can download an installer from the official FFmpeg website
-5. Install spacy: ```python -m spacy download en_core_web_sm```
-
-
-
-
-### Usage
-
-1. Edit the file named .env in the project directory and add your API keys: 
-
- `OPENAI_API_KEY=your_openai_api_key`
-
- `ELEVENLABS_API_KEY=your_elevenlabs_api_key`
-
- * Replace your_openai_api_key and your_elevenlabs_api_key with your actual API keys.
-
-2. Edit the file named caption_generator.py with your desired font path, specify the directory and font name.
-   * Linux fonts can be found at: `"/usr/share/fonts"`
-   * Windows fonts can be found at: `C:\Windows\Fonts` 
-4. Run the autovideo.py script by navigating to the directory the script and .env file are saved. Output will be generated in the same folder: 
-
-* Windows: `python main.py`
-* Linux: 'python3 main.py'
-4. Follow the prompts to enter a story prompt and generate a video.
-
-### Troubleshooting
-* If you encounter errors related to missing dependencies, make sure you have installed the required Python packages by running `pip install -r requirements.txt`
-* If you encounter errors related to FFmpeg, make sure it is installed on your system and available in your system's PATH.
-* https://platform.openai.com/account/api-keys
-* https://beta.elevenlabs.io/subscription Click user icon then profile
-* Keep your keys safe
-
- 
- 
- 
-
-
-# Instructable: Modifying the Code for Haikus and Bee Facts
-
-This instructable will guide you through modifying the provided code to focus on generating haikus and fact-based videos about bees. We'll cover changing the prompt, the models, text overlay, and background color and positioning.
-
-1. **Example prompts**
- * For haikus, enter a prompt related to haikus: 
-```
-Create a haiku about nature
+# Install spacy model
+python -m spacy download en_core_web_sm
 ```
 
-* For bee facts, use a prompt related to bees: 
-```
-Tell me 5 interesting facts about bees
-```
-2. **Changing the models**
+---
 
-To change the model, replace the engine parameter in the openai.Completion.create() function. For example, use the text-curie-002 model:
-```
-response = openai.Completion.create(
-    engine="text-curie-002",
-    prompt=prompt,
-    max_tokens=400,
-    n=1,
-    stop=None,
-    temperature=0.7,
-)
-```
-3. **Changing the duration of each image**
-* To change the duration of each image, modify the set_duration() parameter in the create_video() function. For example, set the duration to 5 seconds per image:
-```
-image_clips = [mpy.ImageClip(img).set_duration(5) for img in image_filenames]
-```
-4 . **Changing the number of images**
-* To change the number of images, update the num_prompts parameter in the extract_image_prompts() function. For example, to generate 6 images, change the function call as follows:
- ```
-def extract_image_prompts(story, num_prompts=5):
-```
-5. **Changing the voice used for the voiceover**
-* To change the voice for the voiceover, modify the generate_voiceover() function. Update the URL used in the requests.post() call with the desired voice ID. For example, to use a different voice, replace the existing voice ID with a new one (e.g., "21m00Tcm4TlvDq8ikWAM", "yoZ06aMxZJJ28mfd3POQ", or "AZnzlk1XvdvUeBnXmlld"):
-```
-response = requests.post("https://api.elevenlabs.io/v1/text-to-speech/NEW_VOICE_ID", headers=headers, json=data)
+## 3. API Keys Configuration
+
+Create a `.env` file in the root directory:
+
+```plaintext
+OPENAI_API_KEY=your_openai_api_key
+ELEVENLABS_API_KEY=your_elevenlabs_api_key
 ```
 
-Now, you can modify the code based on the provided instructions to generate haikus or fact-based videos about bees, with the desired duration for each image, the number of images, and the voice used for the voiceover. Remember to customize the prompts, models, text overlay, background color and positioning, image duration, image count, and voiceover based on your requirements.
+- [OpenAI API Key](https://platform.openai.com/account/api-keys)
+- [ElevenLabs API Key](https://beta.elevenlabs.io/subscription)
 
-Additionally, be mindful of the token limits for your API usage, as exceeding these limits may result in additional charges. You can adjust the max_tokens parameter in the openai.Completion.create() function to control the length of the generated text. Consider setting a lower value to stay within your API limits, especially when generating longer stories or facts.
+**Important:**  
+Keep your API keys secret. Never commit `.env` to GitHub.
+
+---
+
+## 4. Font Configuration
+
+Edit `caption_generator.py` with your system's font path:
+
+| OS | Example |
+|:---|:---|
+| Windows | `C:\Windows\Fonts\Arial.ttf` |
+| Linux | `/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf` |
+
+---
+
+## 5. Usage
+
+Run manually first to verify:
+
+```bash
+python main.py
+```
+
+- Input your prompt when asked.
+- Video will be output to the `/output` folder.
+
+---
+
+# 🐳 **Containerization**
+
+To build and run the container:
+
+```bash
+docker build -t autovideo .
+docker run --env-file .env autovideo
+```
+
+*Output video is mounted to a local volume inside the container (WIP — final structure coming soon).*
+
+---
+
+# ⚙️ **CI/CD Pipeline (GitHub Actions)**
+
+Planned GitHub Actions workflow will:
+- Build Docker image automatically
+- Trigger video generation job
+- Upload completed video to YouTube
+
+**[To Be Finalized After V1 Cloud Deployment]**
+
+---
+
+# 🛰️ **Planned Cloud Deployment**
+
+V1 cloud setup:
+- Deploy container via **Google Cloud Run** or **GCP VM**
+- Trigger scheduled runs via **GCP Scheduler** or **cronjob**
+- Upload videos directly from cloud to YouTube
+
+---
+
+# 📈 **Future Enhancements (V2+)**
+
+- Smarter video editing (scene analysis, pacing control)
+- Auto-generated thumbnails
+- Trend scraping (TikTok, YouTube, Instagram)
+- Dynamic title/caption/hashtag injection
+- Full multi-platform publishing
+- Analytics tracking and performance dashboards
+
+---
+
+# 🧠 **Notes and Warnings**
+
+- AI generation can sometimes fail due to API limits or bad prompts — retries will be implemented.
+- This project will evolve rapidly — check for updated branches.
+- This repo **starts simple on purpose** — foundation first, fancy later.
+
+---
+
+# 🛠️ **Contributing**
+
+Right now this is a **personal/internal project**.  
+Future contributors will follow a simple fork + pull request model.
+
+---
+
+# 👨‍💻 **Author**
+
+**Rez E. Archer**  
+- DevOps Architect | Full Stack Developer | Builder of Silent Empires  
+- [probably.ninja (coming soon)](#)
+
+---
+
+# 🏴 **License**
+
+MIT License (free to use, modify, distribute — with attribution if public.)
+
+---
+

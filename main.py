@@ -1,67 +1,96 @@
-import time
-from story_generator import generate_story, save_story_with_image_prompts, save_story
-from keyword_identifier import extract_image_prompts
-from image_generator import generate_images, save_images
-from voiceover_generator import generate_voiceover, save_voiceover
+import os
+import sys
+import logging
+from datetime import datetime
+from dotenv import load_dotenv
+from story_generator import generate_story, extract_image_prompts
+from image_generator import generate_images
+from voiceover_generator import generate_voiceover
 from video_creator import create_video
-from caption_generator import extract_story_from_file, create_caption_images, add_captions_to_video
+from output_manager import OutputManager
+from topic_manager import TopicManager
 
+# Load environment variables
+load_dotenv()
 
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('output/logs/error.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 def main():
-    timestamp = int(time.time())
-
-    # Get user input
-    story_prompt = input("Enter a story prompt: ")
-
-    story, final_story_prompt = generate_story(story_prompt)  # Update the assignment to get the final_story_prompt
-    print("Story generated successfully.")
-
-    # Generate image Prompts
-    image_prompts = extract_image_prompts(story)
-    print("Image prompts extracted.")
-    
-    # Save the story and image prompts together
-    save_story(final_story_prompt) # save story alone for captions
-    save_story_with_image_prompts(story, final_story_prompt, image_prompts)  # Use final_story_prompt instead of story_prompt
-
-    # Generate images
-    images = generate_images(image_prompts)
-    print("Images generated successfully.")
-    save_images(images, timestamp)
-
-    # Generate the voiceover
-    voiceover = generate_voiceover(story)
-    if voiceover:
-        print("Voiceover generated successfully.")
-        save_voiceover(voiceover, timestamp)
-    else:
-        print("Voiceover generation failed.")
-
-    # Create the video
-    create_video(images, voiceover, story, timestamp)
-    print("Video created successfully.")
-
-    story_file_path = save_story(story)
-
-    # Prompt user to add captions
-    add_captions_option = input("Do you want to add captions to the video? (y/n): ").lower()
-    
-    if add_captions_option == "y":
+    try:
+        # Initialize output manager and create run directory
+        output_manager = OutputManager()
+        run_dir = output_manager.create_run_directory()
         
+        # Initialize topic manager
+        topic_manager = TopicManager()
         
-        # Extract the story from the file
-        story = extract_story_from_file(story_file_path)
-
-        # Convert story segments to caption images
-        caption_images = create_caption_images(story)
-
-        # Path for the newly created video with captions
-        video_with_captions_path = f"video_with_captions_{timestamp}.mp4"
-
-        # Overlay captions onto the video
-        add_captions_to_video(f"output_video_{timestamp}.mp4", caption_images, video_with_captions_path)
-        print("Captions added successfully.")
+        # Get next topic
+        story_prompt = topic_manager.get_next_topic()
+        logging.info(f"Selected topic: {story_prompt}")
+        
+        # Generate story
+        logging.info("Generating story...")
+        story_result = generate_story(story_prompt)
+        if not story_result:
+            raise Exception("Failed to generate story")
+        story, _ = story_result  # Unpack the tuple, ignoring the prompt
+            
+        # Save story
+        output_manager.save_text(story, "story.txt")
+        logging.info("Story saved successfully")
+        
+        # Extract image prompts
+        logging.info("Extracting image prompts...")
+        image_prompts = extract_image_prompts(story)
+        if not image_prompts:
+            raise Exception("Failed to extract image prompts")
+            
+        # Generate images
+        logging.info("Generating images...")
+        image_paths = []
+        for i, prompt in enumerate(image_prompts):
+            image_path = output_manager.get_path(f"image_{i+1}.png", subdir='images')
+            output_manager.ensure_dir_exists(os.path.dirname(image_path))
+            generated_path = generate_images(prompt, image_path)
+            if not generated_path:
+                raise Exception(f"Failed to generate image {i+1}")
+            image_paths.append(generated_path)
+            logging.info(f"Image {i+1} saved to: {generated_path}")
+            
+        # Generate voiceover
+        logging.info("Generating voiceover...")
+        voiceover_path = output_manager.get_path("voiceover.mp3", subdir='audio')
+        output_manager.ensure_dir_exists(os.path.dirname(voiceover_path))
+        voiceover_path = generate_voiceover(story, voiceover_path)
+        if not voiceover_path:
+            raise Exception("Failed to generate voiceover")
+        logging.info(f"Voiceover saved to: {voiceover_path}")
+        
+        # Create video
+        logging.info("Creating video...")
+        video_path = output_manager.get_path("final_video.mp4", subdir='video')
+        output_manager.ensure_dir_exists(os.path.dirname(video_path))
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        create_video(image_paths, voiceover_path, story, timestamp, output_path=video_path)
+        logging.info(f"Video saved to: {video_path}")
+        
+        # Clean up temporary files
+        output_manager.cleanup()
+        logging.info("Temporary files cleaned up")
+        
+        logging.info("Video generation completed successfully!")
+        
+    except Exception as e:
+        logging.error(f"An error occurred: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main()

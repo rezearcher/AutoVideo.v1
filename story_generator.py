@@ -2,36 +2,83 @@ import openai
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+import time
+import sys
+import logging
 
 load_dotenv()
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
-def generate_story(prompt):
-    while True:
-        openai.api_key = os.getenv("OPENAI_API_KEY")
-        response = openai.Completion.create(
-            engine = "text-davinci-003",
-            prompt = prompt,
-            max_tokens = 400,
-            n = 1,
-            stop = None,
-            temperature = 0.7,
-        )
-        story = response.choices[0].text.strip()
-        print("Generated Story:")
-        print(story)
+def generate_story(prompt, timeout=60):
+    """
+    Generate a story from a prompt with a timeout.
+    
+    Args:
+        prompt (str): The story prompt
+        timeout (int): Maximum time in seconds to wait for story generation
         
-        # Ask the user whether they want to proceed, generate another story, or write their own story
-        user_input = input("\nDo you want to proceed with this? (y/n/custom): ")
-        if user_input.lower() == "y":
-            return story, prompt  # Return both the story and the prompt used
-        elif user_input.lower() == "n":
-            prompt = input("\nEnter a new prompt: ")
-        elif user_input.lower() == "custom":
-            custom_story = input("Write your custom story: ")
-            return custom_story, prompt  # Return the custom story and the original prompt
-        else:
-            print("Invalid input. Please enter 'y' to proceed with the current story, 'n' to generate another story, or 'custom' to write your own story.")
+    Returns:
+        tuple: (story, prompt)
+    """
+    start_time = time.time()
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        if time.time() - start_time > timeout:
+            raise Exception("Story generation timed out")
+            
+        try:
+            openai.api_key = os.getenv("OPENAI_API_KEY")
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a creative storyteller. Create engaging, detailed stories that are 3-5 paragraphs long. Each paragraph should be rich in visual details."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=800,  # Increased from 300
+                temperature=0.7,
+            )
+            story = response.choices[0].message.content.strip()
+            print("\nGenerated Story:")
+            print(story)
+            
+            # Automatically proceed with 'y'
+            return story, prompt
+            
+        except Exception as e:
+            logging.error(f"Error generating story: {str(e)}")
+            retry_count += 1
+            if retry_count >= max_retries:
+                raise Exception(f"Failed to generate story after {max_retries} attempts")
+            time.sleep(1)  # Brief pause before retry
+
+def extract_image_prompts(story):
+    """
+    Extract image prompts from the story.
+    
+    Args:
+        story (str): The story text
+        
+    Returns:
+        list: List of image prompts
+    """
+    try:
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a creative image prompt generator. Extract 3-5 key scenes from the story that would make good images. Each prompt should be detailed and descriptive, focusing on visual elements, lighting, mood, and composition."},
+                {"role": "user", "content": f"Extract image prompts from this story:\n\n{story}"}
+            ],
+            max_tokens=500,  # Increased from 200
+            temperature=0.7,
+        )
+        prompts = response.choices[0].message.content.strip().split('\n')
+        return [p.strip() for p in prompts if p.strip()]
+    except Exception as e:
+        logging.error(f"Error extracting image prompts: {str(e)}")
+        raise
 
 def save_story_with_image_prompts(story, prompt, image_prompts):
     with open(f"story_{timestamp}.txt", "w") as f:

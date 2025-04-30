@@ -100,29 +100,27 @@ class TopicManager:
             self._generate_new_topics()
             
     def get_next_topic(self):
-        """Get next topic, ensuring it hasn't been used in the last selection."""
-        # Always try to generate new topics first
-        self._generate_new_topics()
-        
+        """Get the next topic while ensuring it hasn't been used in the last selection."""
         if not self.topics:
-            # If generation failed, use fallback
-            self._use_fallback_topics()
-            
-        # Filter out recently used topics (last 3)
-        available_topics = [t for t in self.topics if t not in self.used_topics[-3:]]
+            # If no topics available, reset by moving all used topics back except the last used one
+            if not self.used_topics:
+                # If no used topics either, generate new ones
+                self._generate_new_topics()
+            else:
+                # Move all but the last used topic back to available topics
+                last_used = self.used_topics[-1] if self.used_topics else None
+                self.topics = [topic for topic in self.used_topics[:-1] if topic != last_used]
+                self.used_topics = [last_used] if last_used else []
+                
+                # If still no topics, generate new ones
+                if not self.topics:
+                    self._generate_new_topics()
         
-        if not available_topics:
-            # If all topics have been used recently, generate new ones
-            self._generate_new_topics()
-            available_topics = self.topics
-            
-        # Select a random topic from available topics
-        selected_topic = random.choice(available_topics)
-        
-        # Add to used topics
+        # Select a random topic from available ones
+        selected_topic = random.choice(self.topics)
+        self.topics.remove(selected_topic)
         self.used_topics.append(selected_topic)
         self._save_topics()
-        
         return selected_topic
         
     def force_update_topics(self):

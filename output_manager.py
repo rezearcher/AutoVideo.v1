@@ -80,18 +80,20 @@ class OutputManager:
             return os.path.join(self.subdirs[subdir], filename)
         return os.path.join(self.current_run_dir, filename)
         
-    def save_text(self, content: str, filename: str, subdir: str = 'text') -> str:
+    def save_text(self, content: str, filepath: str, subdir: str = 'text') -> str:
         """Save text content to a file in the specified subdirectory.
         
         Args:
             content: The text content to save
-            filename: The name of the file to save
+            filepath: The name of the file to save
             subdir: The subdirectory to save in (default: 'text')
             
         Returns:
             str: The path where the file was saved
         """
-        filepath = self.get_path(filename, subdir)
+        if not os.path.isabs(filepath):
+            filepath = self.get_path(os.path.basename(filepath), subdir)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
         return filepath

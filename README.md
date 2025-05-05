@@ -33,7 +33,7 @@ Create a video autonomously, containerize it, deploy it to the cloud, and automa
 
 ## 1. Prerequisites
 
-- Python 3.8+
+- Python 3.8+ (pyenv recommended)
 - Docker + Docker Compose (for containerization)
 - GitHub account (for repo + CI/CD)
 - Google Cloud / YouTube API credentials
@@ -48,12 +48,15 @@ Create a video autonomously, containerize it, deploy it to the cloud, and automa
 git clone https://github.com/YOURNAMEHERE/AutoVideo.git
 cd AutoVideo
 
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install the package in development mode
+pip install -e .
+
+# Install development dependencies (optional)
+pip install -r requirements-dev.txt
 
 # Install spacy model
 python -m spacy download en_core_web_sm
@@ -61,44 +64,76 @@ python -m spacy download en_core_web_sm
 
 ---
 
-## 3. API Keys Configuration
+## 3. Project Structure
 
-Create a `.env` file in the root directory:
-
-```plaintext
-OPENAI_API_KEY=your_openai_api_key
-ELEVENLABS_API_KEY=your_elevenlabs_api_key
+```
+AI-Auto-Video-Generator/
+├── .venv/                  # Virtual environment
+├── output/                 # Generated videos
+│   ├── audio/             # Generated audio files
+│   ├── images/            # Generated images
+│   ├── logs/              # Application logs
+│   ├── text/              # Generated text content
+│   └── video/             # Final video output
+├── scripts/               # Utility scripts
+├── youtube_uploader/      # YouTube upload functionality
+├── .env                   # Environment variables (create from .env.example)
+├── .env.example          # Example environment variables
+├── main.py               # Main entry point
+├── story_generator.py    # Story generation using GPT
+├── image_generator.py    # Image generation using DALL-E
+├── voiceover_generator.py # Voice generation using ElevenLabs
+├── video_creator.py      # Video assembly using MoviePy
+├── topic_manager.py      # Topic management and generation
+├── output_manager.py     # Output file management
+├── setup.py             # Package setup configuration
+├── requirements.txt     # Core dependencies
+└── requirements-dev.txt # Development dependencies
 ```
 
-- [OpenAI API Key](https://platform.openai.com/account/api-keys)
-- [ElevenLabs API Key](https://beta.elevenlabs.io/subscription)
+---
+
+## 4. API Keys Configuration
+
+Copy `.env.example` to `.env` and fill in your API keys:
+
+```bash
+cp .env.example .env
+```
+
+Required API keys:
+- OpenAI API Key (for story and image generation)
+- ElevenLabs API Key (for voice generation)
+- YouTube API credentials (for video upload)
+- Stability AI API Key (for image generation)
 
 **Important:**  
 Keep your API keys secret. Never commit `.env` to GitHub.
 
 ---
 
-## 4. Font Configuration
-
-Edit `caption_generator.py` with your system's font path:
-
-| OS | Example |
-|:---|:---|
-| Windows | `C:\Windows\Fonts\Arial.ttf` |
-| Linux | `/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf` |
-
----
-
 ## 5. Usage
 
-Run manually first to verify:
+Run the application using the installed command:
+
+```bash
+ai-video-gen
+```
+
+Or run directly:
 
 ```bash
 python main.py
 ```
 
-- Input your prompt when asked.
-- Video will be output to the `/output` folder.
+The application will:
+1. Generate a story from a prompt
+2. Create images for key scenes
+3. Generate voiceover narration
+4. Assemble the final video
+5. Optionally upload to YouTube
+
+Output files will be saved in the `/output` directory, organized by type and timestamp.
 
 ---
 
@@ -111,18 +146,44 @@ docker build -t autovideo .
 docker run --env-file .env autovideo
 ```
 
-*Output video is mounted to a local volume inside the container (WIP — final structure coming soon).*
+*Output video is mounted to a local volume inside the container.*
 
 ---
 
-# ⚙️ **CI/CD Pipeline (GitHub Actions)**
+# ⚙️ **Development**
 
-Planned GitHub Actions workflow will:
-- Build Docker image automatically
-- Trigger video generation job
-- Upload completed video to YouTube
+## Testing
 
-**[To Be Finalized After V1 Cloud Deployment]**
+Run tests with pytest:
+
+```bash
+pytest
+```
+
+Run tests with coverage:
+
+```bash
+pytest --cov=.
+```
+
+## Code Quality
+
+Format code:
+
+```bash
+black .
+flake8
+mypy .
+```
+
+## Documentation
+
+Build documentation:
+
+```bash
+cd docs
+make html
+```
 
 ---
 

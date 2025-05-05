@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.organization = os.getenv("OPENAI_ORG_ID")
 
 def generate_images(prompt, output_path):
     """

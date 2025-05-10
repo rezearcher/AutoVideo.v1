@@ -113,6 +113,13 @@ init_thread.start()
 application = app
 
 if __name__ == "__main__":
+    # Get port from environment variable
     port = int(os.environ.get("PORT", 8080))
-    logging.info(f"Starting Flask development server on port {port}")
-    app.run(host='0.0.0.0', port=port)
+    host = "0.0.0.0"
+    
+    logging.info(f"Starting Flask development server on {host}:{port}")
+    try:
+        app.run(host=host, port=port)
+    except Exception as e:
+        logging.error(f"Failed to start Flask server: {str(e)}")
+        sys.exit(1)

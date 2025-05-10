@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 ENV TZ=UTC
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
-ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance"
+ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance --timeout 120"
 
 # Create app directory
 WORKDIR /app
@@ -45,9 +45,10 @@ EXPOSE ${PORT}
 
 # Start gunicorn with explicit port binding
 CMD ["gunicorn", \
-     "--bind", "0.0.0.0:8080", \
+     "--bind", "0.0.0.0:${PORT}", \
      "--workers", "1", \
      "--threads", "8", \
+     "--timeout", "120", \
      "--log-level", "info", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \

@@ -36,15 +36,27 @@ jobs:
 
     - name: Create Artifact Registry Repository
       run: |
-        # Check if repository exists
-        if ! gcloud artifacts repositories describe av-app --location=${{ env.REGION }} &>/dev/null; then
-          echo "Creating repository..."
-          gcloud artifacts repositories create av-app \
+        echo "Checking repository status..."
+        REPO_NAME="av-app"
+        REPO_PATH="projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/repositories/$REPO_NAME"
+        
+        # List existing repositories
+        echo "Listing existing repositories..."
+        gcloud artifacts repositories list --location=${{ env.REGION }} || true
+        
+        # Try to describe the repository
+        if gcloud artifacts repositories describe $REPO_NAME --location=${{ env.REGION }} &>/dev/null; then
+          echo "Repository $REPO_NAME already exists"
+        else
+          echo "Creating repository $REPO_NAME..."
+          gcloud artifacts repositories create $REPO_NAME \
             --repository-format=docker \
             --location=${{ env.REGION }} \
-            --description="Docker repository for AV App"
-        else
-          echo "Repository already exists"
+            --description="Docker repository for AV App" || {
+              echo "Failed to create repository. Checking permissions..."
+              gcloud projects get-iam-policy ${{ env.PROJECT_ID }} --format=json | grep -A 5 artifactregistry
+              exit 1
+            }
         fi
 
     - name: Authorize Docker push

@@ -69,21 +69,28 @@ jobs:
         docker push $IMAGE_NAME:latest
 
     - name: Deploy to Cloud Run
-      uses: google-github-actions/deploy-cloudrun@v2
-      with:
-        service: ${{ env.SERVICE_NAME }}
-        region: ${{ env.REGION }}
-        image: us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/av-app/${{ env.SERVICE_NAME }}:latest
-        flags: '--allow-unauthenticated'
-        env_vars: |
-          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-          OPENAI_ORG_ID=${{ secrets.OPENAI_ORG_ID }}
-          ELAI_API_KEY=${{ secrets.ELAI_API_KEY }}
-          DID_API_KEY=${{ secrets.DID_API_KEY }}
-          IMGUR_CLIENT_ID=${{ secrets.IMGUR_CLIENT_ID }}
-          IMGUR_CLIENT_SECRET=${{ secrets.IMGUR_CLIENT_SECRET }}
-          ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
-          PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
-          YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_PROJECT_ID=${{ secrets.YOUTUBE_PROJECT_ID }} 
+      run: |
+        # Create a temporary file for environment variables
+        cat > env.yaml << EOF
+        env_variables:
+          OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
+          OPENAI_ORG_ID: "${{ secrets.OPENAI_ORG_ID }}"
+          ELAI_API_KEY: "${{ secrets.ELAI_API_KEY }}"
+          DID_API_KEY: "${{ secrets.DID_API_KEY }}"
+          IMGUR_CLIENT_ID: "${{ secrets.IMGUR_CLIENT_ID }}"
+          IMGUR_CLIENT_SECRET: "${{ secrets.IMGUR_CLIENT_SECRET }}"
+          ELEVENLABS_API_KEY: "${{ secrets.ELEVENLABS_API_KEY }}"
+          PEXELS_API_KEY: "${{ secrets.PEXELS_API_KEY }}"
+          YOUTUBE_CLIENT_ID: "${{ secrets.YOUTUBE_CLIENT_ID }}"
+          YOUTUBE_CLIENT_SECRET: "${{ secrets.YOUTUBE_CLIENT_SECRET }}"
+          YOUTUBE_PROJECT_ID: "${{ secrets.YOUTUBE_PROJECT_ID }}"
+        EOF
+
+        # Deploy to Cloud Run
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/av-app/${{ env.SERVICE_NAME }}:latest \
+          --region ${{ env.REGION }} \
+          --platform managed \
+          --allow-unauthenticated \
+          --update-env-vars-file env.yaml \
+          --update-labels managed-by=github-actions,commit-sha=${{ github.sha }} 

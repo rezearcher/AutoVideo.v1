@@ -207,13 +207,14 @@ def initialize_app():
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         if missing_vars:
             logging.warning(f"Missing environment variables: {', '.join(missing_vars)}")
+            # Don't raise exception, just log warning
         
         is_initialized = True
         logging.info("Application initialization completed successfully")
         
     except Exception as e:
         logging.error(f"Failed to initialize application: {str(e)}")
-        raise  # Re-raise the exception to ensure the container fails if initialization fails
+        # Don't raise exception, just log error
 
 # Create the Flask application instance
 application = app

@@ -1,9 +1,6 @@
 import os
 import logging
-from moviepy.video.io.VideoFileClip import VideoFileClip
-from moviepy.video.VideoClip import ImageClip
-from moviepy.video.compositing.concatenate import concatenate_videoclips
-from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.editor import VideoFileClip, ImageClip, concatenate_videoclips, AudioFileClip
 from moviepy.video.fx.all import resize
 from caption_generator import create_caption_images, add_captions_to_video
 from PIL import Image, ImageDraw, ImageFont

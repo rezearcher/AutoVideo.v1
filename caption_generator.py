@@ -10,17 +10,33 @@ logger = logging.getLogger(__name__)
 
 # Default font paths for different operating systems
 DEFAULT_FONT_PATHS = {
-    'linux': '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-    'darwin': '/System/Library/Fonts/Helvetica.ttc',
-    'win32': 'C:\\Windows\\Fonts\\arial.ttf'
+    'linux': [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',  # Primary font
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',  # Backup font
+        '/app/fonts/DejaVuSans.ttf'  # Local backup
+    ],
+    'darwin': [
+        '/System/Library/Fonts/Helvetica.ttc',
+        '/Library/Fonts/Arial.ttf'
+    ],
+    'win32': [
+        'C:\\Windows\\Fonts\\arial.ttf',
+        'C:\\Windows\\Fonts\\segoeui.ttf'
+    ]
 }
 
 def get_default_font_path():
     """Get the default font path for the current operating system."""
     system = os.name
     if system in DEFAULT_FONT_PATHS:
-        return DEFAULT_FONT_PATHS[system]
-    return DEFAULT_FONT_PATHS['linux']  # Fallback to Linux path
+        # Try each font path in order until one works
+        for font_path in DEFAULT_FONT_PATHS[system]:
+            if os.path.exists(font_path):
+                logger.info(f"Using font: {font_path}")
+                return font_path
+    # If no fonts found, return the first Linux path as fallback
+    logger.warning("No system fonts found, using default fallback")
+    return DEFAULT_FONT_PATHS['linux'][0]
 
 def create_caption_images(story, words_per_caption=5, font_path=None):
     """Convert the story into caption segments and generate images."""
@@ -31,7 +47,7 @@ def create_caption_images(story, words_per_caption=5, font_path=None):
         
         # Verify font file exists
         if not os.path.exists(font_path):
-            logger.warning(f"Font file not found at {font_path}, using default")
+            logger.warning(f"Font file not found at {font_path}, trying fallback fonts")
             font_path = get_default_font_path()
         
         # Split story into words and create segments
@@ -45,6 +61,7 @@ def create_caption_images(story, words_per_caption=5, font_path=None):
         except Exception as e:
             logger.error(f"Error loading font: {str(e)}")
             # Fallback to default font
+            logger.warning("Falling back to default font")
             font = ImageFont.load_default()
         
         # Create caption images

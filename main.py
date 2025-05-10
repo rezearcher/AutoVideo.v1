@@ -27,11 +27,15 @@ logging.basicConfig(
 # Initialize Flask app
 app = Flask(__name__)
 
-# Global state
+# Global state variables
 is_generating = False
+is_initialized = False
 last_generation_time = None
 last_generation_status = None
-is_initialized = False
+current_phase = None
+current_progress = None
+current_phase_progress = None
+error_message = None
 
 @app.route('/health')
 def health_check():
@@ -42,54 +46,41 @@ def health_check():
 
 @app.route('/status')
 def status():
-    global is_generating, last_generation_time, last_generation_status, is_initialized
+    """Get the current status of the video generation process."""
     return jsonify({
-        "is_initialized": is_initialized,
-        "is_generating": is_generating,
-        "last_generation_time": last_generation_time,
-        "last_generation_status": last_generation_status
-    }), 200
+        'is_generating': is_generating,
+        'is_initialized': is_initialized,
+        'last_generation_status': last_generation_status,
+        'last_generation_time': last_generation_time.isoformat() if last_generation_time else None,
+        'current_phase': current_phase,
+        'current_progress': current_progress,
+        'current_phase_progress': current_phase_progress,
+        'error_message': error_message
+    })
 
 def generate_video():
-    global is_generating, last_generation_time, last_generation_status
+    global is_generating, last_generation_time, last_generation_status, current_phase, current_progress, current_phase_progress, error_message
+    
     try:
         is_generating = True
-        last_generation_time = datetime.now().isoformat()
+        last_generation_time = datetime.now()
         last_generation_status = "in_progress"
+        error_message = None
         
-        # Initialize output manager and create run directory
-        output_manager = OutputManager()
-        run_dir = output_manager.create_run_directory()
-        logging.info(f"Created run directory: {run_dir}")
+        # Story generation phase
+        current_phase = "story_generation"
+        current_progress = 0
+        current_phase_progress = 0
+        story, story_prompt = generate_story("Write a story about a mysterious island that appears once every hundred years")
+        current_phase_progress = 100
         
-        # Initialize topic manager
-        topic_manager = TopicManager()
-        
-        # Get next topic
-        story_prompt = topic_manager.get_next_topic()
-        logging.info(f"Selected topic: {story_prompt}")
-        
-        # Generate story
-        logging.info("Generating story...")
-        story_result = generate_story(story_prompt)
-        if not story_result:
-            raise Exception("Failed to generate story")
-        story, _ = story_result  # Unpack the tuple, ignoring the prompt
-            
-        # Save story
-        story_path = output_manager.get_path("story.txt", subdir='text')
-        output_manager.save_text(story, story_path)
-        logging.info("Story saved successfully")
-        
-        # Extract image prompts
-        logging.info("Extracting image prompts...")
+        # Image generation phase
+        current_phase = "image_generation"
+        current_progress = 20
+        current_phase_progress = 0
         image_prompts = extract_image_prompts(story)
-        if not image_prompts:
-            raise Exception("Failed to extract image prompts")
-            
-        # Generate images
-        logging.info("Generating images...")
         image_paths = []
+        
         for i, prompt in enumerate(image_prompts):
             image_path = output_manager.get_path(f"image_{i+1}.png", subdir='images')
             output_manager.ensure_dir_exists(os.path.dirname(image_path))
@@ -97,63 +88,69 @@ def generate_video():
             if not generated_path:
                 raise Exception(f"Failed to generate image {i+1}")
             image_paths.append(generated_path)
+            current_phase_progress = (i + 1) * 100 // len(image_prompts)
             logging.info(f"Image {i+1} saved to: {generated_path}")
-            
-        # Generate voiceover
+        
+        # Voiceover generation phase
+        current_phase = "voiceover_generation"
+        current_progress = 40
+        current_phase_progress = 0
         logging.info("Generating voiceover...")
         voiceover_path = output_manager.get_path("voiceover.mp3", subdir='audio')
         output_manager.ensure_dir_exists(os.path.dirname(voiceover_path))
         voiceover_path = generate_voiceover(story, voiceover_path)
         if not voiceover_path:
             raise Exception("Failed to generate voiceover")
+        current_phase_progress = 100
         logging.info(f"Voiceover saved to: {voiceover_path}")
         
-        # Create video
+        # Video creation phase
+        current_phase = "video_creation"
+        current_progress = 60
+        current_phase_progress = 0
         logging.info("Creating video...")
         video_path = output_manager.get_path("final_video.mp4", subdir='video')
         output_manager.ensure_dir_exists(os.path.dirname(video_path))
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         create_video(image_paths, voiceover_path, story, timestamp, output_path=video_path)
+        current_phase_progress = 100
         logging.info(f"Video saved to: {video_path}")
         
-        # Upload to YouTube
+        # YouTube upload phase
+        current_phase = "youtube_upload"
+        current_progress = 80
+        current_phase_progress = 0
         title = f"AI Generated Story: {story_prompt}"
         description = f"An AI-generated story video.\n\n{story[:500]}..."  # First 500 chars of story
         tags = ["AI", "story", "generated", "creative"]
         
         logging.info("Uploading video to YouTube...")
-        if upload_to_youtube(video_path):
-            logging.info("Video uploaded successfully!")
-            last_generation_status = "success"
-        else:
-            logging.error("Failed to upload video to YouTube")
-            last_generation_status = "failed_upload"
+        upload_to_youtube(video_path, title, description, tags)
+        current_phase_progress = 100
+        current_progress = 100
         
-        # Clean up temporary files
-        output_manager.cleanup()
-        logging.info("Temporary files cleaned up")
+        last_generation_status = "completed"
+        logging.info("Video generation completed successfully")
         
     except Exception as e:
-        logging.error(f"An error occurred: {str(e)}")
-        last_generation_status = f"error: {str(e)}"
+        error_message = str(e)
+        last_generation_status = "failed"
+        logging.error(f"Error generating video: {error_message}")
         raise
     finally:
         is_generating = False
 
-def upload_to_youtube(video_path):
+def upload_to_youtube(video_path, title, description, tags):
     """Upload video to YouTube."""
     try:
         from youtube_uploader.uploader import upload_video
-        
-        # Generate a title and description
-        title = f"AI Generated Story Video - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        description = "An AI-generated story video created using OpenAI's GPT and DALL-E models."
         
         # Upload the video
         video_id = upload_video(
             video_path=video_path,
             title=title,
             description=description,
+            tags=tags,
             privacy_status="public"  # Changed to public by default
         )
         

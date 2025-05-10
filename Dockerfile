@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     build-essential \
+    fonts-liberation \
+    fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -30,7 +32,7 @@ ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 
 # Create necessary directories and set permissions
-RUN mkdir -p /app/secrets /app/output && \
+RUN mkdir -p /app/secrets /app/output /app/fonts && \
     chmod -R 755 /app && \
     chown -R nobody:nogroup /app && \
     chmod -R 777 /app/output /app/secrets

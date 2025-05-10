@@ -190,11 +190,25 @@ def initialize_app():
     try:
         logging.info("Starting application initialization...")
         
-        # Create necessary directories
+        # Create necessary directories with proper error handling
         logging.info("Creating application directories...")
-        os.makedirs("/app/output", exist_ok=True)
-        os.makedirs("/app/secrets", exist_ok=True)
-        logging.info("Application directories created successfully")
+        try:
+            os.makedirs("/app/output", exist_ok=True)
+            logging.info("Created /app/output directory")
+        except Exception as e:
+            logging.error(f"Failed to create /app/output directory: {str(e)}")
+            # Try creating in current directory instead
+            os.makedirs("./output", exist_ok=True)
+            logging.info("Created ./output directory as fallback")
+            
+        try:
+            os.makedirs("/app/secrets", exist_ok=True)
+            logging.info("Created /app/secrets directory")
+        except Exception as e:
+            logging.error(f"Failed to create /app/secrets directory: {str(e)}")
+            # Try creating in current directory instead
+            os.makedirs("./secrets", exist_ok=True)
+            logging.info("Created ./secrets directory as fallback")
         
         # Check environment variables
         logging.info("Checking environment variables...")
@@ -216,6 +230,21 @@ def initialize_app():
         if missing_vars:
             logging.warning(f"Missing environment variables: {', '.join(missing_vars)}")
             # Don't raise exception, just log warning
+        else:
+            logging.info("All required environment variables are present")
+        
+        # Test write permissions
+        logging.info("Testing write permissions...")
+        test_dirs = ["/app/output", "./output", "/app/secrets", "./secrets"]
+        for test_dir in test_dirs:
+            try:
+                test_file = os.path.join(test_dir, "test.txt")
+                with open(test_file, "w") as f:
+                    f.write("test")
+                os.remove(test_file)
+                logging.info(f"Successfully tested write permissions in {test_dir}")
+            except Exception as e:
+                logging.error(f"Failed to test write permissions in {test_dir}: {str(e)}")
         
         is_initialized = True
         logging.info("Application initialization completed successfully")

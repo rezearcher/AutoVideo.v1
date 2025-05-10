@@ -32,7 +32,8 @@ ENV PYTHONUNBUFFERED=1
 # Create necessary directories and set permissions
 RUN mkdir -p /app/secrets /app/output && \
     chmod -R 755 /app && \
-    chown -R nobody:nogroup /app
+    chown -R nobody:nogroup /app && \
+    chmod -R 777 /app/output /app/secrets
 
 # Switch to non-root user
 USER nobody
@@ -45,4 +46,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 EXPOSE ${PORT}
 
 # Start with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "0", "main:app"] 
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "0", "--log-level", "info", "main:app"] 

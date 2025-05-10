@@ -31,15 +31,20 @@ app = Flask(__name__)
 is_generating = False
 last_generation_time = None
 last_generation_status = None
+is_initialized = False
 
 @app.route('/health')
 def health_check():
+    global is_initialized
+    if not is_initialized:
+        return jsonify({"status": "initializing"}), 503
     return jsonify({"status": "healthy"}), 200
 
 @app.route('/status')
 def status():
-    global is_generating, last_generation_time, last_generation_status
+    global is_generating, last_generation_time, last_generation_status, is_initialized
     return jsonify({
+        "is_initialized": is_initialized,
         "is_generating": is_generating,
         "last_generation_time": last_generation_time,
         "last_generation_status": last_generation_status
@@ -55,6 +60,7 @@ def generate_video():
         # Initialize output manager and create run directory
         output_manager = OutputManager()
         run_dir = output_manager.create_run_directory()
+        logging.info(f"Created run directory: {run_dir}")
         
         # Initialize topic manager
         topic_manager = TopicManager()
@@ -171,10 +177,47 @@ def start_video_generation():
     thread.start()
     return thread
 
-# Start video generation when the application starts
-@app.before_first_request
-def initialize():
-    start_video_generation()
+def initialize_app():
+    """Initialize the application."""
+    global is_initialized
+    try:
+        logging.info("Initializing application...")
+        
+        # Create necessary directories
+        os.makedirs("/app/output", exist_ok=True)
+        os.makedirs("/app/secrets", exist_ok=True)
+        
+        # Check environment variables
+        required_vars = [
+            "OPENAI_API_KEY",
+            "OPENAI_ORG_ID",
+            "ELAI_API_KEY",
+            "DID_API_KEY",
+            "IMGUR_CLIENT_ID",
+            "IMGUR_CLIENT_SECRET",
+            "ELEVENLABS_API_KEY",
+            "PEXELS_API_KEY",
+            "YOUTUBE_CLIENT_ID",
+            "YOUTUBE_CLIENT_SECRET",
+            "YOUTUBE_PROJECT_ID"
+        ]
+        
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        if missing_vars:
+            raise Exception(f"Missing required environment variables: {', '.join(missing_vars)}")
+        
+        # Start video generation
+        start_video_generation()
+        
+        is_initialized = True
+        logging.info("Application initialized successfully")
+        
+    except Exception as e:
+        logging.error(f"Failed to initialize application: {str(e)}")
+        raise
+
+# Initialize the application when it starts
+initialize_app()
 
 if __name__ == "__main__":
     # Start Flask app

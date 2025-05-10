@@ -6,6 +6,8 @@ A fully automated, AI-powered storytelling video generator.
 - Creates images using **OpenAI DALL-E**.
 - Adds voiceover using **ElevenLabs**.
 - Assembles final video output using **MoviePy** and **FFmpeg**.
+- Automatically uploads to **YouTube**.
+- Runs on **Google Cloud Run** with daily scheduled execution.
 
 **V1 Focus:**  
 Create a video autonomously, containerize it, deploy it to the cloud, and automatically upload to **YouTube**.
@@ -22,7 +24,7 @@ Create a video autonomously, containerize it, deploy it to the cloud, and automa
 
 | Phase | Goal |
 |:---|:---|
-| V1 | Generate basic videos, upload to YouTube via automation |
+| V1 | ✅ Generate basic videos, upload to YouTube via automation |
 | V2 | Improve video quality (AI scene analysis, dynamic editing) |
 | V3 | Inject trend detection to create timely, viral content |
 | Beyond | Expand to TikTok, Instagram, trend scraping, analytics |
@@ -68,26 +70,28 @@ python -m spacy download en_core_web_sm
 
 ```
 AI-Auto-Video-Generator/
-├── .venv/                  # Virtual environment
-├── output/                 # Generated videos
-│   ├── audio/             # Generated audio files
-│   ├── images/            # Generated images
-│   ├── logs/              # Application logs
-│   ├── text/              # Generated text content
-│   └── video/             # Final video output
-├── scripts/               # Utility scripts
-├── youtube_uploader/      # YouTube upload functionality
-├── .env                   # Environment variables (create from .env.example)
-├── .env.example          # Example environment variables
-├── main.py               # Main entry point
-├── story_generator.py    # Story generation using GPT
-├── image_generator.py    # Image generation using DALL-E
+├── .github/               # GitHub Actions workflows
+│   └── workflows/        # CI/CD configuration
+├── .venv/                # Virtual environment
+├── output/               # Generated videos
+│   ├── audio/           # Generated audio files
+│   ├── images/          # Generated images
+│   ├── logs/            # Application logs
+│   ├── text/            # Generated text content
+│   └── video/           # Final video output
+├── scripts/             # Utility scripts
+├── youtube_uploader/    # YouTube upload functionality
+├── .env                 # Environment variables (create from .env.example)
+├── .env.example        # Example environment variables
+├── main.py             # Main entry point
+├── story_generator.py  # Story generation using GPT
+├── image_generator.py  # Image generation using DALL-E
 ├── voiceover_generator.py # Voice generation using ElevenLabs
-├── video_creator.py      # Video assembly using MoviePy
-├── topic_manager.py      # Topic management and generation
-├── output_manager.py     # Output file management
-├── setup.py             # Package setup configuration
-├── requirements.txt     # Core dependencies
+├── video_creator.py    # Video assembly using MoviePy
+├── topic_manager.py    # Topic management and generation
+├── output_manager.py   # Output file management
+├── setup.py           # Package setup configuration
+├── requirements.txt   # Core dependencies
 └── requirements-dev.txt # Development dependencies
 ```
 
@@ -114,6 +118,8 @@ Keep your API keys secret. Never commit `.env` to GitHub.
 
 ## 5. Usage
 
+### Local Development
+
 Run the application using the installed command:
 
 ```bash
@@ -126,12 +132,40 @@ Or run directly:
 python main.py
 ```
 
+### Docker
+
+Build and run the container:
+
+```bash
+docker build -t autovideo .
+docker run --env-file .env autovideo
+```
+
+### Cloud Run Deployment
+
+The application is automatically deployed to Google Cloud Run via GitHub Actions. The workflow:
+
+1. Builds the Docker image
+2. Pushes to Google Container Registry
+3. Deploys to Cloud Run
+4. Runs daily at 9 AM EST
+
+To deploy manually:
+
+```bash
+gcloud run deploy av-app \
+  --image us-central1-docker.pkg.dev/PROJECT_ID/av-app/av-app:latest \
+  --region us-central1 \
+  --platform managed \
+  --allow-unauthenticated
+```
+
 The application will:
 1. Generate a story from a prompt
 2. Create images for key scenes
 3. Generate voiceover narration
 4. Assemble the final video
-5. Optionally upload to YouTube
+5. Upload to YouTube automatically
 
 Output files will be saved in the `/output` directory, organized by type and timestamp.
 
@@ -139,14 +173,14 @@ Output files will be saved in the `/output` directory, organized by type and tim
 
 # 🐳 **Containerization**
 
-To build and run the container:
+The application is containerized using Docker and includes:
 
-```bash
-docker build -t autovideo .
-docker run --env-file .env autovideo
-```
-
-*Output video is mounted to a local volume inside the container.*
+- Python 3.11 base image
+- FFmpeg for video processing
+- Gunicorn for production serving
+- Health checks and proper logging
+- Non-root user for security
+- Proper file permissions
 
 ---
 
@@ -187,12 +221,21 @@ make html
 
 ---
 
-# 🛰️ **Planned Cloud Deployment**
+# 🛰️ **Cloud Deployment**
 
-V1 cloud setup:
-- Deploy container via **Google Cloud Run** or **GCP VM**
-- Trigger scheduled runs via **GCP Scheduler** or **cronjob**
-- Upload videos directly from cloud to YouTube
+The application is deployed to Google Cloud Run with:
+
+- Daily scheduled execution (9 AM EST)
+- Automatic container builds
+- Environment variable management
+- Health monitoring
+- Proper logging
+- YouTube integration
+
+Required GCP setup:
+1. Enable required APIs (Cloud Run, Container Registry)
+2. Create service account with necessary permissions
+3. Configure GitHub Actions secrets
 
 ---
 

@@ -12,7 +12,7 @@ env:
   PROJECT_ID: av-8675309
   SERVICE_NAME: av-app
   REGION: us-central1
-  IMAGE_NAME: gcr.io/av-8675309/av-app
+  IMAGE_NAME: us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/av-app/${{ env.SERVICE_NAME }}
 
 jobs:
   build-and-deploy:
@@ -35,8 +35,16 @@ jobs:
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
+    - name: Create Artifact Registry Repository
+      run: |
+        gcloud artifacts repositories create av-app \
+          --repository-format=docker \
+          --location=us-central1 \
+          --description="Docker repository for AV App" \
+          --quiet || true
+
     - name: Authorize Docker push
-      run: gcloud auth configure-docker
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
     - name: Build and push Docker image
       run: |

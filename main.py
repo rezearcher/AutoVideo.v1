@@ -264,4 +264,11 @@ if __name__ == "__main__":
     flask_thread.start()
     
     # Run video generation in the main thread
-    run_video_generation()
+    try:
+        logging.info("Starting video generation...")
+        generate_video()  # This will use TopicManager to get the prompt
+        logging.info("Video generation completed, exiting container")
+        sys.exit(0)
+    except Exception as e:
+        logging.error(f"Error in video generation: {str(e)}")
+        sys.exit(1)

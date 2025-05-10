@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 ENV TZ=UTC
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
-ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance --timeout 120 --graceful-timeout 120"
+ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance --timeout 120 --graceful-timeout 120 --keep-alive 5"
 
 # Create app directory
 WORKDIR /app
@@ -37,7 +37,7 @@ RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Health check with more frequent checks during startup
-HEALTHCHECK --interval=2s --timeout=3s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=1s --timeout=2s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Expose port
@@ -50,6 +50,7 @@ CMD ["gunicorn", \
      "--threads", "8", \
      "--timeout", "120", \
      "--graceful-timeout", "120", \
+     "--keep-alive", "5", \
      "--log-level", "info", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \

@@ -41,14 +41,13 @@ current_phase_progress = None
 error_message = None
 output_manager = None
 init_thread = None
-startup_time = None
+startup_time = time.time()
 
 def background_initialization():
     """Perform heavy initialization in the background."""
-    global is_initialized, startup_time
+    global is_initialized
     try:
         logging.info("Starting background initialization...")
-        startup_time = time.time()
         
         # Create necessary directories
         logging.info("Creating application directories...")
@@ -88,7 +87,8 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "initialized": is_initialized,
-        "uptime": time.time() - startup_time if startup_time else 0
+        "uptime": time.time() - startup_time if startup_time else 0,
+        "startup_time": startup_time
     }), 200
 
 @app.route('/')
@@ -97,7 +97,8 @@ def root():
     return jsonify({
         "status": "running",
         "initialized": is_initialized,
-        "uptime": time.time() - startup_time if startup_time else 0
+        "uptime": time.time() - startup_time if startup_time else 0,
+        "startup_time": startup_time
     }), 200
 
 @app.route('/status')
@@ -112,7 +113,8 @@ def status():
         'current_progress': current_progress,
         'current_phase_progress': current_phase_progress,
         'error_message': error_message,
-        'uptime': time.time() - startup_time if startup_time else 0
+        'uptime': time.time() - startup_time if startup_time else 0,
+        'startup_time': startup_time
     })
 
 # Start background initialization

@@ -12,7 +12,7 @@ from video_creator import create_video
 from output_manager import OutputManager
 from topic_manager import TopicManager
 from youtube_uploader import upload_video, YouTubeConfig
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 # Configure logging first
 logging.basicConfig(
@@ -133,6 +133,43 @@ def status():
         'uptime': time.time() - startup_time if startup_time else 0,
         'startup_time': startup_time
     })
+
+@app.route('/generate', methods=['POST'])
+def start_generation():
+    """Start video generation with the provided prompt."""
+    global is_generating
+    
+    if is_generating:
+        return jsonify({
+            'error': 'Video generation already in progress',
+            'status': 'busy'
+        }), 409
+    
+    if not request.json or 'prompt' not in request.json:
+        return jsonify({
+            'error': 'Missing prompt in request body',
+            'status': 'error'
+        }), 400
+    
+    prompt = request.json['prompt']
+    
+    try:
+        # Start generation in a background thread
+        thread = threading.Thread(target=generate_video, args=(prompt,))
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            'status': 'started',
+            'message': 'Video generation started',
+            'prompt': prompt
+        }), 202
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'status': 'error'
+        }), 500
 
 # Start background initialization
 init_thread = threading.Thread(target=background_initialization)

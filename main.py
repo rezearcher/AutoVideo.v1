@@ -20,7 +20,8 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    stream=sys.stdout  # Ensure logs go to stdout for Cloud Run
 )
 
 # Initialize Flask app
@@ -170,10 +171,12 @@ def start_video_generation():
     thread.start()
     return thread
 
-if __name__ == "__main__":
-    # Start video generation in background
+# Start video generation when the application starts
+@app.before_first_request
+def initialize():
     start_video_generation()
-    
+
+if __name__ == "__main__":
     # Start Flask app
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)

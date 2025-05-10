@@ -4,16 +4,21 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install OS dependencies (ffmpeg for MoviePy, curl for debugging)
+# Install OS dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
+    git \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir moviepy==1.0.3
+    pip install --no-cache-dir \
+    moviepy==1.0.3 \
+    gunicorn==21.2.0 \
+    flask==3.0.2
 
 # Copy code
 COPY . .
@@ -22,12 +27,15 @@ COPY . .
 ENV GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/credentials.json
 ENV TZ=America/Chicago
 ENV PORT=8080
+ENV PYTHONUNBUFFERED=1
 
-# Create necessary directories
-RUN mkdir -p /app/secrets /app/output
+# Create necessary directories and set permissions
+RUN mkdir -p /app/secrets /app/output && \
+    chmod -R 755 /app && \
+    chown -R nobody:nogroup /app
 
-# Set permissions
-RUN chmod -R 755 /app
+# Switch to non-root user
+USER nobody
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
@@ -36,5 +44,5 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE ${PORT}
 
-# Entrypoint script
-CMD ["python", "main.py"] 
+# Start with gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "0", "main:app"] 

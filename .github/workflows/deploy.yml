@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: '0 13 * * *'  # 9 AM EST = 13:00 UTC
   workflow_dispatch:  # Allow manual triggers
+  push:
+    branches:
+      - main  # Trigger on pushes to main branch
 
 env:
   PROJECT_ID: av-8675309

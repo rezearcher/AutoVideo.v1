@@ -104,15 +104,32 @@ def root():
 @app.route('/status')
 def status():
     """Get the current status of the video generation process."""
+    # Calculate runtime if generation is in progress
+    runtime = None
+    if is_generating and last_generation_time:
+        runtime = (datetime.now() - last_generation_time).total_seconds()
+    
+    # Get phase description
+    phase_descriptions = {
+        "story_generation": "Generating story and image prompts",
+        "image_generation": "Generating images from prompts",
+        "voiceover_generation": "Generating voiceover audio",
+        "video_creation": "Creating final video with captions"
+    }
+    
+    phase_description = phase_descriptions.get(current_phase, current_phase)
+    
     return jsonify({
         'is_generating': is_generating,
         'is_initialized': is_initialized,
         'last_generation_status': last_generation_status,
         'last_generation_time': last_generation_time.isoformat() if last_generation_time else None,
         'current_phase': current_phase,
+        'current_phase_description': phase_description,
         'current_progress': current_progress,
         'current_phase_progress': current_phase_progress,
         'error_message': error_message,
+        'runtime_seconds': runtime,
         'uptime': time.time() - startup_time if startup_time else 0,
         'startup_time': startup_time
     })
@@ -124,6 +141,76 @@ init_thread.start()
 
 # Create the WSGI application instance for gunicorn
 application = app
+
+def update_generation_status(phase, progress=None, phase_progress=None, error=None):
+    """Update the current status of the video generation process."""
+    global current_phase, current_progress, current_phase_progress, error_message
+    current_phase = phase
+    current_progress = progress
+    current_phase_progress = phase_progress
+    error_message = error
+
+def generate_video(prompt):
+    """Generate a video from a prompt."""
+    global is_generating, last_generation_time, last_generation_status
+    
+    try:
+        is_generating = True
+        last_generation_time = datetime.now()
+        last_generation_status = "started"
+        
+        # Create timestamp for unique file names
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        
+        # Create output directories
+        output_dir = os.path.join('output', timestamp)
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Step 1: Generate story and image prompts
+        update_generation_status("story_generation", progress=0, phase_progress=0)
+        logging.info("Step 1: Generating story...")
+        story, prompt = generate_story(prompt)
+        image_prompts = extract_image_prompts(story)
+        update_generation_status("story_generation", progress=25, phase_progress=100)
+
+        # Step 2: Generate and save images
+        update_generation_status("image_generation", progress=25, phase_progress=0)
+        logging.info("Step 2: Generating images...")
+        total_images = len(image_prompts)
+        for i, prompt in enumerate(image_prompts):
+            images = generate_images([prompt])
+            image_paths = save_images(images, timestamp)
+            phase_progress = int((i + 1) / total_images * 100)
+            update_generation_status("image_generation", progress=25 + (25 * phase_progress / 100), phase_progress=phase_progress)
+        update_generation_status("image_generation", progress=50, phase_progress=100)
+
+        # Step 3: Generate audio
+        update_generation_status("voiceover_generation", progress=50, phase_progress=0)
+        logging.info("Step 3: Generating audio...")
+        audio_path = os.path.join(output_dir, 'voiceover.m4a')
+        generate_voiceover(story, audio_path)
+        update_generation_status("voiceover_generation", progress=75, phase_progress=100)
+
+        # Step 4: Create video
+        update_generation_status("video_creation", progress=75, phase_progress=0)
+        logging.info("Step 4: Creating video...")
+        video_path = os.path.join(output_dir, 'final_video.mp4')
+        create_video(image_paths, audio_path, story, timestamp, video_path)
+        update_generation_status("video_creation", progress=100, phase_progress=100)
+        
+        last_generation_status = "completed"
+        logging.info(f"✅ Video pipeline completed successfully! Output at: {video_path}")
+        return video_path
+        
+    except Exception as e:
+        error_msg = str(e)
+        logging.error(f"❌ Error in video pipeline: {error_msg}")
+        last_generation_status = "failed"
+        update_generation_status(None, error=error_msg)
+        raise
+        
+    finally:
+        is_generating = False
 
 if __name__ == "__main__":
     # Get port from environment variable

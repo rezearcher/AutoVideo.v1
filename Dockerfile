@@ -26,7 +26,6 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 COPY . .
 
 # Set environment variables
-ENV GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/credentials.json
 ENV TZ=America/Chicago
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1

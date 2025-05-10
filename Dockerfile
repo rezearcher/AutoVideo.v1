@@ -25,6 +25,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir gunicorn flask
 
+# Ensure moviepy is installed correctly with all dependencies
+RUN pip install --no-cache-dir --force-reinstall moviepy==2.1.2 decorator>=4.0.2 imageio>=2.5 imageio-ffmpeg>=0.4.0 numpy>=1.17.3 proglog<=1.0.0 requests>=2.8.1 tqdm>=4.11.2
+
 # Create necessary directories
 RUN mkdir -p /app/output /app/secrets /app/fonts
 

@@ -8,8 +8,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-openai.api_key = os.getenv("OPENAI_API_KEY")
-openai.organization = os.getenv("OPENAI_ORG_ID")
+
+# Initialize OpenAI client
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def generate_images(prompt, output_path):
     """
@@ -31,10 +32,13 @@ def generate_images(prompt, output_path):
         logging.info(f"Generating image for prompt: {prompt}")
         logging.info(f"Output path: {output_path}")
         
-        response = openai.Image.create(
+        response = client.images.generate(
+            model="dall-e-3",
             prompt=prompt,
             n=1,
             size="1024x1024",
+            quality="standard",
+            style="natural"
         )
 
         if response.data:

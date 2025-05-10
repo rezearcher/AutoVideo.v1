@@ -11,9 +11,23 @@ from video_creator import create_video
 from output_manager import OutputManager
 from topic_manager import TopicManager
 from youtube_uploader import upload_video, YouTubeConfig
+from flask import Flask, jsonify
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+# Initialize Flask app
+app = Flask(__name__)
+
+@app.route('/health')
+def health_check():
+    return jsonify({"status": "healthy"}), 200
 
 def main():
     try:
@@ -151,7 +165,5 @@ def upload_to_youtube(video_path):
         return False
 
 if __name__ == "__main__":
-    # Remove any existing handlers to avoid duplicate logging
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
-    main()
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)

@@ -1,13 +1,16 @@
-import openai
 import os
+import logging
+from openai import OpenAI
 from dotenv import load_dotenv
 from datetime import datetime
 import time
 import sys
-import logging
 
 # Load environment variables
 load_dotenv()
+
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 def generate_story(prompt, timeout=60):
     """
@@ -32,21 +35,15 @@ def generate_story(prompt, timeout=60):
             raise Exception("Story generation timed out")
             
         try:
-            openai.api_key = os.getenv("OPENAI_API_KEY")
-            openai.organization = os.getenv("OPENAI_ORG_ID")
-            
-            if not openai.api_key:
-                raise ValueError("OpenAI API key not found in environment variables")
-            
             logging.info("Sending request to OpenAI API...")
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
+            response = client.chat.completions.create(
+                model="gpt-4",
                 messages=[
-                    {"role": "system", "content": "You are a creative storyteller. Create engaging, detailed stories that are 3-5 paragraphs long. Each paragraph should be rich in visual details."},
+                    {"role": "system", "content": "You are a creative storyteller."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=800,
                 temperature=0.7,
+                max_tokens=2000
             )
             
             story = response.choices[0].message.content.strip()
@@ -55,13 +52,6 @@ def generate_story(prompt, timeout=60):
             
             return story, prompt
             
-        except openai.error.AuthenticationError as e:
-            logging.error(f"OpenAI authentication error: {str(e)}")
-            raise
-        except openai.error.RateLimitError as e:
-            logging.warning(f"OpenAI rate limit hit, retrying... ({retry_count + 1}/{max_retries})")
-            retry_count += 1
-            time.sleep(2 ** retry_count)  # Exponential backoff
         except Exception as e:
             logging.error(f"Error generating story: {str(e)}")
             retry_count += 1
@@ -69,50 +59,35 @@ def generate_story(prompt, timeout=60):
                 raise Exception(f"Failed to generate story after {max_retries} attempts: {str(e)}")
             time.sleep(1)
 
-def extract_image_prompts(story):
-    """
-    Extract image prompts from the story.
-    
-    Args:
-        story (str): The story text
-        
-    Returns:
-        list: List of image prompts
-    """
-    logging.info("Extracting image prompts from story")
-    
+def extract_image_prompts(story, num_scenes=5):
+    """Extract image prompts from the story."""
     try:
-        openai.api_key = os.getenv("OPENAI_API_KEY")
-        openai.organization = os.getenv("OPENAI_ORG_ID")
+        logging.info("Extracting image prompts from story...")
         
-        if not openai.api_key:
-            raise ValueError("OpenAI API key not found in environment variables")
+        prompt = f"""
+        Given this story, create {num_scenes} detailed image prompts that capture key scenes.
+        Make each prompt detailed and descriptive for image generation.
+        Story: {story}
+        """
         
-        logging.info("Sending request to OpenAI API for image prompts...")
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a creative image prompt generator. Extract 3-5 key scenes from the story that would make good images. Each prompt should be detailed and descriptive, focusing on visual elements, lighting, mood, and composition."},
-                {"role": "user", "content": f"Extract image prompts from this story:\n\n{story}"}
+                {"role": "system", "content": "You are an expert at creating detailed image prompts from stories."},
+                {"role": "user", "content": prompt}
             ],
-            max_tokens=500,
             temperature=0.7,
+            max_tokens=1000
         )
         
-        prompts = response.choices[0].message.content.strip().split('\n')
-        prompts = [p.strip() for p in prompts if p.strip()]
+        prompts_text = response.choices[0].message.content.strip()
+        prompts = [p.strip() for p in prompts_text.split('\n') if p.strip()]
+        logging.info(f"Generated {len(prompts)} image prompts")
+        return prompts[:num_scenes]
         
-        logging.info(f"Successfully extracted {len(prompts)} image prompts")
-        logging.debug(f"Image prompts: {prompts}")
-        
-        return prompts
-        
-    except openai.error.AuthenticationError as e:
-        logging.error(f"OpenAI authentication error: {str(e)}")
-        raise
     except Exception as e:
         logging.error(f"Error extracting image prompts: {str(e)}")
-        raise
+        return None
 
 def save_story_with_image_prompts(story, prompt, image_prompts, output_dir="output/text"):
     """

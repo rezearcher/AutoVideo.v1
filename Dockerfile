@@ -23,7 +23,7 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir moviepy gunicorn flask
+RUN pip install --no-cache-dir gunicorn flask
 
 # Create necessary directories
 RUN mkdir -p /app/output /app/secrets /app/fonts

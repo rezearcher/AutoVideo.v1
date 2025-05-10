@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import time
+import threading
 from datetime import datetime
 from dotenv import load_dotenv
 from story_generator import generate_story, extract_image_prompts
@@ -25,12 +26,31 @@ logging.basicConfig(
 # Initialize Flask app
 app = Flask(__name__)
 
+# Global state
+is_generating = False
+last_generation_time = None
+last_generation_status = None
+
 @app.route('/health')
 def health_check():
     return jsonify({"status": "healthy"}), 200
 
-def main():
+@app.route('/status')
+def status():
+    global is_generating, last_generation_time, last_generation_status
+    return jsonify({
+        "is_generating": is_generating,
+        "last_generation_time": last_generation_time,
+        "last_generation_status": last_generation_status
+    }), 200
+
+def generate_video():
+    global is_generating, last_generation_time, last_generation_status
     try:
+        is_generating = True
+        last_generation_time = datetime.now().isoformat()
+        last_generation_status = "in_progress"
+        
         # Initialize output manager and create run directory
         output_manager = OutputManager()
         run_dir = output_manager.create_run_directory()
@@ -89,50 +109,29 @@ def main():
         create_video(image_paths, voiceover_path, story, timestamp, output_path=video_path)
         logging.info(f"Video saved to: {video_path}")
         
+        # Upload to YouTube
+        title = f"AI Generated Story: {story_prompt}"
+        description = f"An AI-generated story video.\n\n{story[:500]}..."  # First 500 chars of story
+        tags = ["AI", "story", "generated", "creative"]
+        
+        logging.info("Uploading video to YouTube...")
+        if upload_to_youtube(video_path):
+            logging.info("Video uploaded successfully!")
+            last_generation_status = "success"
+        else:
+            logging.error("Failed to upload video to YouTube")
+            last_generation_status = "failed_upload"
+        
         # Clean up temporary files
         output_manager.cleanup()
         logging.info("Temporary files cleaned up")
         
-        logging.info("Video generation completed successfully!")
-        
-        # Ask about YouTube upload
-        print("\nWould you like to upload this video to YouTube?")
-        print("Press 'y' within 5 seconds to upload, or any other key to skip...")
-        
-        # Wait for user input with timeout
-        start_time = time.time()
-        should_upload = True  # Default to yes
-        
-        while time.time() - start_time < 5:
-            try:
-                if sys.stdin.isatty():
-                    import select
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        user_input = sys.stdin.read(1).lower()
-                        should_upload = (user_input == 'y')
-                        break
-            except Exception:
-                pass
-            time.sleep(0.1)
-        
-        if should_upload:
-            # Generate metadata from story
-            title = f"AI Generated Story: {story_prompt}"
-            description = f"An AI-generated story video.\n\n{story[:500]}..."  # First 500 chars of story
-            tags = ["AI", "story", "generated", "creative"]
-            
-            # Upload the video
-            logging.info("Uploading video to YouTube...")
-            if upload_to_youtube(video_path):
-                logging.info("Video uploaded successfully!")
-            else:
-                logging.error("Failed to upload video to YouTube")
-        else:
-            print("Upload skipped.")
-        
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
+        last_generation_status = f"error: {str(e)}"
         raise
+    finally:
+        is_generating = False
 
 def upload_to_youtube(video_path):
     """Upload video to YouTube."""
@@ -164,6 +163,17 @@ def upload_to_youtube(video_path):
         logging.error(f"Error uploading to YouTube: {str(e)}")
         return False
 
+def start_video_generation():
+    """Start video generation in a background thread."""
+    thread = threading.Thread(target=generate_video)
+    thread.daemon = True
+    thread.start()
+    return thread
+
 if __name__ == "__main__":
+    # Start video generation in background
+    start_video_generation()
+    
+    # Start Flask app
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)

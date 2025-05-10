@@ -1,12 +1,15 @@
 # Base image
 FROM python:3.11-slim
 
-# Install OS dependencies
+# Install OS dependencies including fonts
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
     git \
     build-essential \
+    fonts-liberation \
+    fonts-dejavu \
+    fonts-freefont-ttf \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables
@@ -24,7 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir moviepy gunicorn flask
 
 # Create necessary directories
-RUN mkdir -p /app/output /app/secrets
+RUN mkdir -p /app/output /app/secrets /app/fonts
 
 # Copy application code
 COPY . .

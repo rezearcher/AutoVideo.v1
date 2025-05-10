@@ -38,10 +38,23 @@ USER appuser
 
 # Health check
 HEALTHCHECK --interval=1s --timeout=2s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Expose port
-EXPOSE 8080
+EXPOSE ${PORT}
 
 # Start the application
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "120", "--graceful-timeout", "120", "--keep-alive", "5", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "--capture-output", "--enable-stdio-inheritance", "--preload", "main:application"] 
+CMD gunicorn \
+    --bind 0.0.0.0:${PORT} \
+    --workers 1 \
+    --threads 8 \
+    --timeout 120 \
+    --graceful-timeout 120 \
+    --keep-alive 5 \
+    --log-level info \
+    --access-logfile - \
+    --error-logfile - \
+    --capture-output \
+    --enable-stdio-inheritance \
+    --preload \
+    main:application 

@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 ENV TZ=UTC
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
-ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance"
+ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance --timeout 120"
 
 # Create app directory
 WORKDIR /app
@@ -40,5 +40,5 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE ${PORT}
 
-# Start gunicorn with proper logging
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "0", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "main:application"] 
+# Start gunicorn with proper logging and increased timeout
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "120", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "--capture-output", "--enable-stdio-inheritance", "main:application"] 

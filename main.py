@@ -261,7 +261,18 @@ logging.info("Application started successfully")
 # Create the WSGI application instance for gunicorn
 logging.info("Creating WSGI application instance...")
 application = app
-logging.info("WSGI application instance created")
+
+# Ensure the application is ready to serve
+@app.before_first_request
+def before_first_request():
+    logging.info("First request received, application is ready to serve")
+
+# Add a root endpoint to verify the application is running
+@app.route('/')
+def root():
+    return jsonify({"status": "running", "initialized": is_initialized}), 200
+
+logging.info("WSGI application instance created and ready to serve")
 
 if __name__ == "__main__":
     # Start Flask app in development mode

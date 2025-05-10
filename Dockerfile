@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 ENV TZ=UTC
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
-ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance --timeout 300 --graceful-timeout 300"
+ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance --timeout 300 --graceful-timeout 300 --keep-alive 5"
 
 # Create app directory
 WORKDIR /app
@@ -54,6 +54,7 @@ CMD ["gunicorn", \
      "--threads", "8", \
      "--timeout", "300", \
      "--graceful-timeout", "300", \
+     "--keep-alive", "5", \
      "--log-level", "info", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \

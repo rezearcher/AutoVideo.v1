@@ -14,6 +14,9 @@ from topic_manager import TopicManager
 from youtube_uploader import upload_video, YouTubeConfig
 from flask import Flask, jsonify
 
+# Load environment variables first
+load_dotenv()
+
 # Configure logging first
 logging.basicConfig(
     level=logging.INFO,

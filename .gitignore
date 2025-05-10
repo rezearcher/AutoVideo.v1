@@ -9,3 +9,8 @@ build/
 new_venv/
 output/
 .files/
+# Sensitive files
+secrets/
+youtube_uploader/token.pickle
+*.json
+*.pickle

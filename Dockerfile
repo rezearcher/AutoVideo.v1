@@ -29,6 +29,7 @@ COPY . .
 ENV TZ=America/Chicago
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
+ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=-"
 
 # Create necessary directories and set permissions
 RUN mkdir -p /app/secrets /app/output /app/fonts && \
@@ -47,4 +48,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 EXPOSE ${PORT}
 
 # Start with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "0", "--log-level", "info", "main:application"] 
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "0", "main:application"] 

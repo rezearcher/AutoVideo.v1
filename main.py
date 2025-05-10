@@ -14,14 +14,11 @@ from topic_manager import TopicManager
 from youtube_uploader import upload_video, YouTubeConfig
 from flask import Flask, jsonify
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging
+# Configure logging first
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    stream=sys.stdout  # Ensure logs go to stdout for Cloud Run
+    stream=sys.stdout
 )
 
 # Initialize Flask app
@@ -41,6 +38,7 @@ output_manager = None
 @app.route('/health')
 def health_check():
     """Health check endpoint that always returns 200 when the app is running."""
+    logging.info("Health check endpoint called")
     return jsonify({"status": "healthy"}), 200
 
 @app.route('/status')
@@ -184,11 +182,12 @@ def initialize_app():
     """Initialize the application."""
     global is_initialized
     try:
-        logging.info("Initializing application...")
+        logging.info("Starting application initialization...")
         
         # Create necessary directories
         os.makedirs("/app/output", exist_ok=True)
         os.makedirs("/app/secrets", exist_ok=True)
+        logging.info("Created necessary directories")
         
         # Check environment variables
         required_vars = [
@@ -210,18 +209,22 @@ def initialize_app():
             logging.warning(f"Missing environment variables: {', '.join(missing_vars)}")
         
         is_initialized = True
-        logging.info("Application initialized successfully")
+        logging.info("Application initialization completed successfully")
         
     except Exception as e:
         logging.error(f"Failed to initialize application: {str(e)}")
-
-# Initialize the application when it starts
-initialize_app()
+        raise  # Re-raise the exception to ensure the container fails if initialization fails
 
 # Create the Flask application instance
 application = app
 
+# Initialize the application
+logging.info("Starting application...")
+initialize_app()
+logging.info("Application started successfully")
+
 if __name__ == "__main__":
     # Start Flask app in development mode
     port = int(os.environ.get("PORT", 8080))
+    logging.info(f"Starting Flask development server on port {port}")
     app.run(host='0.0.0.0', port=port)

@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
 ENV TZ=UTC
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
+ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance"
 
 # Create app directory
 WORKDIR /app
@@ -35,8 +36,21 @@ COPY . .
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
+# Health check
+HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
+
 # Expose port
 EXPOSE ${PORT}
 
-# Start gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "main:application"] 
+# Start gunicorn with explicit port binding
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:8080", \
+     "--workers", "1", \
+     "--threads", "8", \
+     "--log-level", "info", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-", \
+     "--capture-output", \
+     "--enable-stdio-inheritance", \
+     "main:application"] 

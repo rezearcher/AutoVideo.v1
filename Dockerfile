@@ -32,6 +32,10 @@ RUN mkdir -p /app/output /app/secrets /app/fonts
 # Copy application code
 COPY . .
 
+# Create start script
+RUN echo '#!/bin/bash\nexec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 8 --timeout 120 --graceful-timeout 120 --keep-alive 5 --log-level info --access-logfile - --error-logfile - --capture-output --enable-stdio-inheritance --preload main:application' > /app/start.sh && \
+    chmod +x /app/start.sh
+
 # Create non-root user
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
@@ -44,17 +48,4 @@ HEALTHCHECK --interval=1s --timeout=2s --start-period=60s --retries=3 \
 EXPOSE ${PORT}
 
 # Start the application
-CMD gunicorn \
-    --bind 0.0.0.0:${PORT} \
-    --workers 1 \
-    --threads 8 \
-    --timeout 120 \
-    --graceful-timeout 120 \
-    --keep-alive 5 \
-    --log-level info \
-    --access-logfile - \
-    --error-logfile - \
-    --capture-output \
-    --enable-stdio-inheritance \
-    --preload \
-    main:application 
+CMD ["/app/start.sh"] 

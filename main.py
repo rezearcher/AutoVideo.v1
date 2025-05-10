@@ -257,18 +257,18 @@ logging.info("Creating WSGI application instance...")
 application = app
 logging.info("WSGI application instance created")
 
+# Start video generation in a background thread
+try:
+    logging.info("Starting video generation...")
+    thread = threading.Thread(target=generate_video)
+    thread.daemon = True
+    thread.start()
+    logging.info("Video generation thread started")
+except Exception as e:
+    logging.error(f"Error starting video generation: {str(e)}")
+
 if __name__ == "__main__":
-    # Start Flask server in a background thread
-    flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080))))
-    flask_thread.daemon = True
-    flask_thread.start()
-    
-    # Run video generation in the main thread
-    try:
-        logging.info("Starting video generation...")
-        generate_video()  # This will use TopicManager to get the prompt
-        logging.info("Video generation completed, exiting container")
-        sys.exit(0)
-    except Exception as e:
-        logging.error(f"Error in video generation: {str(e)}")
-        sys.exit(1)
+    # Start Flask server in development mode
+    port = int(os.environ.get("PORT", 8080))
+    logging.info(f"Starting Flask development server on port {port}")
+    app.run(host='0.0.0.0', port=port)

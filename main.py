@@ -14,9 +14,6 @@ from topic_manager import TopicManager
 from youtube_uploader import upload_video, YouTubeConfig
 from flask import Flask, jsonify
 
-# Load environment variables first
-load_dotenv()
-
 # Configure logging first
 logging.basicConfig(
     level=logging.INFO,
@@ -24,7 +21,13 @@ logging.basicConfig(
     stream=sys.stdout
 )
 
+# Load environment variables
+logging.info("Loading environment variables...")
+load_dotenv()
+logging.info("Environment variables loaded")
+
 # Initialize Flask app
+logging.info("Initializing Flask application...")
 app = Flask(__name__)
 
 # Global state variables
@@ -188,11 +191,13 @@ def initialize_app():
         logging.info("Starting application initialization...")
         
         # Create necessary directories
+        logging.info("Creating application directories...")
         os.makedirs("/app/output", exist_ok=True)
         os.makedirs("/app/secrets", exist_ok=True)
-        logging.info("Created necessary directories")
+        logging.info("Application directories created successfully")
         
         # Check environment variables
+        logging.info("Checking environment variables...")
         required_vars = [
             "OPENAI_API_KEY",
             "OPENAI_ORG_ID",
@@ -225,7 +230,9 @@ initialize_app()
 logging.info("Application started successfully")
 
 # Create the WSGI application instance for gunicorn
+logging.info("Creating WSGI application instance...")
 application = app
+logging.info("WSGI application instance created")
 
 if __name__ == "__main__":
     # Start Flask app in development mode

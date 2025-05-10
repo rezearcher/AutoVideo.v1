@@ -36,11 +36,16 @@ jobs:
 
     - name: Create Artifact Registry Repository
       run: |
-        gcloud artifacts repositories create av-app \
-          --repository-format=docker \
-          --location=${{ env.REGION }} \
-          --description="Docker repository for AV App" \
-          --quiet || true
+        # Check if repository exists
+        if ! gcloud artifacts repositories describe av-app --location=${{ env.REGION }} &>/dev/null; then
+          echo "Creating repository..."
+          gcloud artifacts repositories create av-app \
+            --repository-format=docker \
+            --location=${{ env.REGION }} \
+            --description="Docker repository for AV App"
+        else
+          echo "Repository already exists"
+        fi
 
     - name: Authorize Docker push
       run: gcloud auth configure-docker us-central1-docker.pkg.dev

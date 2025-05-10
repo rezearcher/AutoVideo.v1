@@ -41,12 +41,14 @@ current_phase_progress = None
 error_message = None
 output_manager = None
 init_thread = None
+startup_time = None
 
 def background_initialization():
     """Perform heavy initialization in the background."""
-    global is_initialized
+    global is_initialized, startup_time
     try:
         logging.info("Starting background initialization...")
+        startup_time = time.time()
         
         # Create necessary directories
         logging.info("Creating application directories...")
@@ -75,7 +77,7 @@ def background_initialization():
             logging.warning(f"Missing environment variables: {', '.join(missing_vars)}")
         
         is_initialized = True
-        logging.info("Background initialization completed successfully")
+        logging.info(f"Background initialization completed successfully in {time.time() - startup_time:.2f} seconds")
         
     except Exception as e:
         logging.error(f"Failed to initialize application: {str(e)}")
@@ -83,12 +85,20 @@ def background_initialization():
 @app.route('/health')
 def health_check():
     """Health check endpoint that always returns 200 when the app is running."""
-    return jsonify({"status": "healthy", "initialized": is_initialized}), 200
+    return jsonify({
+        "status": "healthy",
+        "initialized": is_initialized,
+        "uptime": time.time() - startup_time if startup_time else 0
+    }), 200
 
 @app.route('/')
 def root():
     """Root endpoint that returns basic status."""
-    return jsonify({"status": "running", "initialized": is_initialized}), 200
+    return jsonify({
+        "status": "running",
+        "initialized": is_initialized,
+        "uptime": time.time() - startup_time if startup_time else 0
+    }), 200
 
 @app.route('/status')
 def status():
@@ -101,7 +111,8 @@ def status():
         'current_phase': current_phase,
         'current_progress': current_progress,
         'current_phase_progress': current_phase_progress,
-        'error_message': error_message
+        'error_message': error_message,
+        'uptime': time.time() - startup_time if startup_time else 0
     })
 
 # Start background initialization

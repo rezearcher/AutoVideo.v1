@@ -36,6 +36,7 @@ current_phase = None
 current_progress = None
 current_phase_progress = None
 error_message = None
+output_manager = None
 
 @app.route('/health')
 def health_check():
@@ -56,8 +57,21 @@ def status():
         'error_message': error_message
     })
 
+@app.route('/generate', methods=['POST'])
+def start_generation():
+    """Start video generation in a background thread."""
+    global is_generating
+    if is_generating:
+        return jsonify({"status": "already_generating"}), 409
+    
+    thread = threading.Thread(target=generate_video)
+    thread.daemon = True
+    thread.start()
+    return jsonify({"status": "started"}), 202
+
 def generate_video():
-    global is_generating, last_generation_time, last_generation_status, current_phase, current_progress, current_phase_progress, error_message
+    """Generate a video with the current configuration."""
+    global is_generating, last_generation_time, last_generation_status, current_phase, current_progress, current_phase_progress, error_message, output_manager
     
     try:
         is_generating = True
@@ -65,20 +79,41 @@ def generate_video():
         last_generation_status = "in_progress"
         error_message = None
         
+        # Initialize output manager and create run directory
+        output_manager = OutputManager()
+        run_dir = output_manager.create_run_directory()
+        
+        # Initialize topic manager
+        topic_manager = TopicManager()
+        
+        # Get next topic
+        story_prompt = topic_manager.get_next_topic()
+        logging.info(f"Selected topic: {story_prompt}")
+        
         # Story generation phase
         current_phase = "story_generation"
         current_progress = 0
         current_phase_progress = 0
-        story, story_prompt = generate_story("Write a story about a mysterious island that appears once every hundred years")
+        story_result = generate_story(story_prompt)
+        if not story_result:
+            raise Exception("Failed to generate story")
+        story, _ = story_result
         current_phase_progress = 100
+        
+        # Save story
+        story_path = output_manager.get_path("story.txt", subdir='text')
+        output_manager.save_text(story, story_path)
+        logging.info("Story saved successfully")
         
         # Image generation phase
         current_phase = "image_generation"
         current_progress = 20
         current_phase_progress = 0
         image_prompts = extract_image_prompts(story)
+        if not image_prompts:
+            raise Exception("Failed to extract image prompts")
+            
         image_paths = []
-        
         for i, prompt in enumerate(image_prompts):
             image_path = output_manager.get_path(f"image_{i+1}.png", subdir='images')
             output_manager.ensure_dir_exists(os.path.dirname(image_path))
@@ -123,10 +158,16 @@ def generate_video():
         tags = ["AI", "story", "generated", "creative"]
         
         logging.info("Uploading video to YouTube...")
-        upload_to_youtube(video_path, title, description, tags)
+        video_id = upload_video(video_path, title, description, tags)
+        if video_id:
+            video_url = f"https://youtu.be/{video_id}"
+            logging.info(f"Video uploaded successfully! Video ID: {video_id}")
+            logging.info(f"Watch it here: {video_url}")
+        else:
+            logging.error("Failed to upload video to YouTube")
+        
         current_phase_progress = 100
         current_progress = 100
-        
         last_generation_status = "completed"
         logging.info("Video generation completed successfully")
         
@@ -134,43 +175,10 @@ def generate_video():
         error_message = str(e)
         last_generation_status = "failed"
         logging.error(f"Error generating video: {error_message}")
-        raise
     finally:
         is_generating = False
-
-def upload_to_youtube(video_path, title, description, tags):
-    """Upload video to YouTube."""
-    try:
-        from youtube_uploader.uploader import upload_video
-        
-        # Upload the video
-        video_id = upload_video(
-            video_path=video_path,
-            title=title,
-            description=description,
-            tags=tags,
-            privacy_status="public"  # Changed to public by default
-        )
-        
-        if video_id:
-            video_url = f"https://youtu.be/{video_id}"
-            logging.info(f"Video uploaded successfully! Video ID: {video_id}")
-            logging.info(f"Watch it here: {video_url}")
-            return True
-        else:
-            logging.error("Failed to upload video to YouTube")
-            return False
-            
-    except Exception as e:
-        logging.error(f"Error uploading to YouTube: {str(e)}")
-        return False
-
-def start_video_generation():
-    """Start video generation in a background thread."""
-    thread = threading.Thread(target=generate_video)
-    thread.daemon = True
-    thread.start()
-    return thread
+        if output_manager:
+            output_manager.cleanup()
 
 def initialize_app():
     """Initialize the application."""
@@ -200,14 +208,12 @@ def initialize_app():
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         if missing_vars:
             logging.warning(f"Missing environment variables: {', '.join(missing_vars)}")
-            # Don't raise exception, just log warning
         
         is_initialized = True
         logging.info("Application initialized successfully")
         
     except Exception as e:
         logging.error(f"Failed to initialize application: {str(e)}")
-        # Don't raise exception, just log error
 
 # Initialize the application when it starts
 initialize_app()

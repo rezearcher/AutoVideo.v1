@@ -218,7 +218,10 @@ def initialize_app():
 # Initialize the application when it starts
 initialize_app()
 
+# Create the Flask application instance
+application = app
+
 if __name__ == "__main__":
-    # Start Flask app
+    # Start Flask app in development mode
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)

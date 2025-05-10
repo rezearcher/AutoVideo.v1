@@ -219,13 +219,13 @@ def initialize_app():
         logging.error(f"Failed to initialize application: {str(e)}")
         # Don't raise exception, just log error
 
-# Create the Flask application instance
-application = app
-
 # Initialize the application
 logging.info("Starting application...")
 initialize_app()
 logging.info("Application started successfully")
+
+# Create the WSGI application instance for gunicorn
+application = app
 
 if __name__ == "__main__":
     # Start Flask app in development mode

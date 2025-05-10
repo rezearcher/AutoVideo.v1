@@ -43,9 +43,9 @@ HEALTHCHECK --interval=1s --timeout=2s --start-period=60s --retries=3 \
 # Expose port
 EXPOSE ${PORT}
 
-# Start gunicorn with explicit port binding and startup checks
-CMD gunicorn \
-    --bind 0.0.0.0:${PORT} \
+# Create startup script
+RUN echo '#!/bin/bash\nexec gunicorn \
+    --bind 0.0.0.0:${PORT:-8080} \
     --workers 1 \
     --threads 8 \
     --timeout 120 \
@@ -57,4 +57,7 @@ CMD gunicorn \
     --capture-output \
     --enable-stdio-inheritance \
     --preload \
-    main:application 
+    main:application' > /app/start.sh && chmod +x /app/start.sh
+
+# Start the application
+CMD ["/app/start.sh"] 

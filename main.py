@@ -97,7 +97,8 @@ def generate_video_thread():
         timing_metrics.end_phase()
         
         timing_metrics.start_phase("voiceover_generation")
-        audio_path = generate_voiceover(story, output_dir)
+        audio_path = os.path.join(output_dir, "voiceover.mp3")
+        generate_voiceover(story, audio_path)
         timing_metrics.end_phase()
         
         # Create worker

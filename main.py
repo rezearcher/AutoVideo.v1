@@ -9,12 +9,13 @@ from voiceover_generator import generate_voiceover
 from youtube_uploader import upload_video
 from datetime import datetime
 from timing_metrics import TimingMetrics
+from flask_async import FlaskAsync
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = FlaskAsync(__name__)
 is_generating = False
 is_initialized = False
 timing_metrics = TimingMetrics()
@@ -87,7 +88,7 @@ async def start_generation():
     return jsonify({"status": "started"}), 202
 
 @app.route('/status', methods=['GET'])
-def get_status():
+async def get_status():
     """Get the current generation status."""
     metrics = timing_metrics.get_metrics()
     return jsonify({
@@ -102,6 +103,11 @@ def get_status():
             "current_phase_duration": metrics["current_phase_duration"]
         }
     })
+
+@app.route('/health')
+async def health_check():
+    """Health check endpoint."""
+    return jsonify({"status": "healthy"}), 200
 
 def initialize_app():
     """Initialize the application."""

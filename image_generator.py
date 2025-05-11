@@ -10,7 +10,7 @@ load_dotenv()
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
 # Initialize OpenAI client
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def generate_image(prompt, output_path):
     """
@@ -24,7 +24,7 @@ def generate_image(prompt, output_path):
         str: Path to the saved image
     """
     try:
-        response = openai.Image.create(
+        response = client.images.generate(
             prompt=prompt,
             n=1,
             size="1024x1024"

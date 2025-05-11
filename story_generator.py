@@ -10,7 +10,7 @@ import sys
 load_dotenv()
 
 # Initialize OpenAI client
-openai.api_key = os.getenv('OPENAI_API_KEY')
+client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 def generate_story(prompt, timeout=60):
     """
@@ -36,7 +36,7 @@ def generate_story(prompt, timeout=60):
             
         try:
             logging.info("Sending request to OpenAI API...")
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[
                     {"role": "system", "content": """You are a creative storyteller. When writing a story, follow this format:
@@ -75,7 +75,7 @@ def extract_image_prompts(story, num_scenes=5):
         Story: {story}
         """
         
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are an expert at creating detailed image prompts from stories."},

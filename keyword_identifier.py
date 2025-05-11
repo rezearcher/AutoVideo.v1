@@ -3,7 +3,8 @@ import os
 from collections import defaultdict
 import spacy
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Initialize OpenAI client
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def extract_image_prompts(story, num_prompts=5):
     nlp = spacy.load('en_core_web_sm')

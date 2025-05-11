@@ -8,6 +8,9 @@ import openai
 # Load environment variables
 load_dotenv()
 
+# Initialize OpenAI client
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 class TopicManager:
     def __init__(self, topics_file="topics.json", max_topics=10, update_interval_days=7):
         self.topics_file = topics_file
@@ -51,8 +54,7 @@ class TopicManager:
     def _generate_new_topics(self):
         """Generate new topics using GPT."""
         try:
-            openai.api_key = os.getenv("OPENAI_API_KEY")
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a creative writing assistant. Generate unique and engaging story prompts. NEVER include prompts about bookstores, libraries, or books coming to life. Focus on diverse themes like adventure, mystery, science fiction, fantasy, and drama."},

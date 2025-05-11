@@ -10,7 +10,7 @@ load_dotenv()
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
 # Initialize OpenAI client
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def generate_images(prompt, output_path):
     """
@@ -32,13 +32,11 @@ def generate_images(prompt, output_path):
         logging.info(f"Generating image for prompt: {prompt}")
         logging.info(f"Output path: {output_path}")
         
-        response = client.images.generate(
-            model="dall-e-3",
+        response = openai.Image.create(
             prompt=prompt,
             n=1,
             size="1024x1024",
-            quality="standard",
-            style="natural"
+            response_format="url"
         )
 
         if response.data:

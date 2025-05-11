@@ -12,6 +12,41 @@ timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 # Initialize OpenAI client
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+def generate_image(prompt, output_path):
+    """
+    Generate a single image from a prompt and save it to the specified path.
+    
+    Args:
+        prompt (str): The image prompt
+        output_path (str): Path where the image should be saved
+        
+    Returns:
+        str: Path to the saved image
+    """
+    try:
+        response = openai.Image.create(
+            prompt=prompt,
+            n=1,
+            size="1024x1024"
+        )
+        
+        image_url = response['data'][0]['url']
+        
+        # Download the image
+        image_response = requests.get(image_url)
+        image_response.raise_for_status()
+        
+        # Save the image
+        with open(output_path, 'wb') as f:
+            f.write(image_response.content)
+            
+        logging.info(f"Generated and saved image to: {output_path}")
+        return output_path
+        
+    except Exception as e:
+        logging.error(f"Error generating image: {str(e)}")
+        raise
+
 def generate_images(prompts, output_dir):
     """
     Generate images from a list of prompts and save them to the specified directory.
@@ -32,55 +67,6 @@ def generate_images(prompts, output_dir):
         return image_paths
     except Exception as e:
         logging.error(f"Error generating images: {str(e)}")
-        raise
-
-def generate_image(prompt, output_path):
-    """
-    Generate an image from a prompt and save it to the specified path.
-    
-    Args:
-        prompt (str): The image prompt
-        output_path (str): Path where the image should be saved
-        
-    Returns:
-        str: Path to the saved image
-    """
-    try:
-        # Ensure the output directory exists
-        output_dir = os.path.dirname(output_path)
-        os.makedirs(output_dir, exist_ok=True)
-        logging.info(f"Ensuring output directory exists: {output_dir}")
-        
-        logging.info(f"Generating image for prompt: {prompt}")
-        logging.info(f"Output path: {output_path}")
-        
-        response = openai.Image.create(
-            prompt=prompt,
-            n=1,
-            size="1024x1024",
-            response_format="url"
-        )
-
-        if response.data:
-            image_url = response.data[0].url
-            logging.info(f"Image generated successfully, downloading from URL: {image_url}")
-            
-            # Download and save the image
-            download_image(image_url, output_path)
-            
-            # Verify the image was saved
-            if not os.path.exists(output_path):
-                raise FileNotFoundError(f"Failed to save image to {output_path}")
-            if os.path.getsize(output_path) == 0:
-                raise ValueError(f"Saved image is empty: {output_path}")
-                
-            logging.info(f"Image saved successfully to: {output_path}")
-            return output_path
-        else:
-            logging.error(f"Error generating image for prompt '{prompt}': No data in response")
-            return None
-    except Exception as e:
-        logging.error(f"Error generating image: {str(e)}")
         raise
 
 def download_image(url, filename):

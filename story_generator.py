@@ -51,7 +51,7 @@ Make sure the title and description are compelling and accurately represent the 
                 max_tokens=2000
             )
             
-            story = response.choices[0].message.content.strip()
+            story = response.choices[0].message['content'].strip()
             logging.info("Story generated successfully")
             logging.debug(f"Generated story: {story}")
             
@@ -85,7 +85,7 @@ def extract_image_prompts(story, num_scenes=5):
             max_tokens=1000
         )
         
-        prompts_text = response.choices[0].message.content.strip()
+        prompts_text = response.choices[0].message['content'].strip()
         prompts = [p.strip() for p in prompts_text.split('\n') if p.strip()]
         logging.info(f"Generated {len(prompts)} image prompts")
         return prompts[:num_scenes]

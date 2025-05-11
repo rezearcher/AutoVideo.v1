@@ -39,7 +39,12 @@ def generate_story(prompt, timeout=60):
             response = openai.ChatCompletion.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": "You are a creative storyteller."},
+                    {"role": "system", "content": """You are a creative storyteller. When writing a story, follow this format:
+1. Title: A catchy, engaging title that captures the essence of the story
+2. Description: A brief 2-3 sentence summary that hooks the reader
+3. Story: The full story content
+
+Make sure the title and description are compelling and accurately represent the story's content."""},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,

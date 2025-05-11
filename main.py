@@ -121,8 +121,12 @@ def generate_video_thread():
         
         # Upload to YouTube
         timing_metrics.start_phase("youtube_upload")
-        title = f"AI Generated Story: {story.split('\n')[0].replace('Title: ', '')}"
-        description = story
+        # Extract title and description from story
+        story_lines = story.split('\n')
+        title = story_lines[0].replace('Title: ', '')
+        description = story_lines[1].replace('Description: ', '')
+        # Add the full story as additional context
+        description += "\n\nFull Story:\n" + "\n".join(story_lines[2:])
         upload_video(output_path, title, description)
         timing_metrics.end_phase()
         

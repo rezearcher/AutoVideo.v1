@@ -21,6 +21,15 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Debug Repository Info
+      run: |
+        echo "Repository: ${{ github.repository }}"
+        echo "Repository Owner: ${{ github.repository_owner }}"
+        echo "Repository Name: ${{ github.event.repository.name }}"
+        echo "Full Repository Path: ${{ github.event.repository.full_name }}"
+        echo "GitHub Context:"
+        echo "${{ toJSON(github) }}"
+
     - name: Google Auth
       id: auth
       uses: google-github-actions/auth@v2

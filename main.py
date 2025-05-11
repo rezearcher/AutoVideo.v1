@@ -137,9 +137,12 @@ def initialize_app():
         logger.error(f"Error initializing application: {str(e)}")
         raise
 
+# Initialize the application
+initialize_app()
+
+# Create WSGI application instance for Gunicorn
+application = app
+
 if __name__ == "__main__":
-    # Initialize the application
-    initialize_app()
-    
-    # Start Flask server
+    # Start Flask server in development mode
     app.run(host='0.0.0.0', port=8080)

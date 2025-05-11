@@ -86,7 +86,7 @@ def generate_video_thread():
         
         # Generate content
         timing_metrics.start_phase("story_generation")
-        story = generate_story(story_prompt)
+        story, prompt = generate_story(story_prompt)
         timing_metrics.end_phase()
         
         # Extract image prompts from the story

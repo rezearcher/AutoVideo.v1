@@ -12,7 +12,29 @@ timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 # Initialize OpenAI client
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def generate_images(prompt, output_path):
+def generate_images(prompts, output_dir):
+    """
+    Generate images from a list of prompts and save them to the specified directory.
+    
+    Args:
+        prompts (list): List of image prompts
+        output_dir (str): Directory where the images should be saved
+        
+    Returns:
+        list: List of paths to the saved images
+    """
+    try:
+        image_paths = []
+        for prompt in prompts:
+            output_path = os.path.join(output_dir, f"image_{len(image_paths)}.png")
+            image_path = generate_image(prompt, output_path)
+            image_paths.append(image_path)
+        return image_paths
+    except Exception as e:
+        logging.error(f"Error generating images: {str(e)}")
+        raise
+
+def generate_image(prompt, output_path):
     """
     Generate an image from a prompt and save it to the specified path.
     

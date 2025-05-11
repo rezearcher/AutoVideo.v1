@@ -8,6 +8,7 @@ from image_generator import generate_images
 from voiceover_generator import generate_voiceover
 from youtube_uploader import upload_video
 from datetime import datetime
+from timing_metrics import TimingMetrics
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,12 +17,14 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 is_generating = False
 is_initialized = False
+timing_metrics = TimingMetrics()
 
 async def generate_video():
     """Generate a video using the GPU worker."""
     global is_generating
     try:
         is_generating = True
+        timing_metrics.start_pipeline()
         
         # Create timestamped output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -29,26 +32,40 @@ async def generate_video():
         os.makedirs(output_dir, exist_ok=True)
         
         # Generate content
+        timing_metrics.start_phase("story_generation")
         story = await generate_story()
+        timing_metrics.end_phase()
+        
+        timing_metrics.start_phase("image_generation")
         image_paths = await generate_images(story, output_dir)
+        timing_metrics.end_phase()
+        
+        timing_metrics.start_phase("voiceover_generation")
         audio_path = await generate_voiceover(story, output_dir)
+        timing_metrics.end_phase()
         
         # Create worker
+        timing_metrics.start_phase("worker_creation")
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         worker_url = await WorkerClient.create_worker(project_id)
         if not worker_url:
             raise Exception("Failed to create GPU worker")
+        timing_metrics.end_phase()
         
         # Process video using worker
+        timing_metrics.start_phase("video_processing")
         worker = WorkerClient(worker_url)
         output_path = f"{output_dir}/final_video.mp4"
         success = await worker.process_video(image_paths, output_path, audio_path)
+        timing_metrics.end_phase()
         
         if not success:
             raise Exception("Video processing failed")
         
         # Upload to YouTube
+        timing_metrics.start_phase("youtube_upload")
         await upload_video(output_path, story)
+        timing_metrics.end_phase()
         
         logger.info("Video generation and upload completed successfully")
         
@@ -56,6 +73,7 @@ async def generate_video():
         logger.error(f"Error generating video: {e}")
         raise
     finally:
+        timing_metrics.end_pipeline()
         is_generating = False
 
 @app.route('/generate', methods=['POST'])
@@ -71,11 +89,18 @@ async def start_generation():
 @app.route('/status', methods=['GET'])
 def get_status():
     """Get the current generation status."""
+    metrics = timing_metrics.get_metrics()
     return jsonify({
         "is_generating": is_generating,
         "is_initialized": is_initialized,
         "last_generation_status": "in_progress" if is_generating else "idle",
-        "last_generation_time": datetime.now().isoformat() if is_generating else None
+        "last_generation_time": datetime.now().isoformat() if is_generating else None,
+        "timing_metrics": {
+            "total_duration": metrics["total_duration"],
+            "phase_times": metrics["phase_times"],
+            "current_phase": metrics["current_phase"],
+            "current_phase_duration": metrics["current_phase_duration"]
+        }
     })
 
 def initialize_app():

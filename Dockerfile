@@ -52,10 +52,7 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Create necessary directories
-RUN mkdir -p /app/output /app/secrets /app/fonts /app/.files
-
-# Copy .files directory first
-COPY .files /app/.files/
+RUN mkdir -p /app/output /app/secrets /app/fonts
 
 # Copy application code
 COPY . .

@@ -2,7 +2,7 @@ import os
 import logging
 from flask import Flask, jsonify, request
 from worker_client import WorkerClient
-from story_generator import generate_story
+from story_generator import generate_story, extract_image_prompts
 from image_generator import generate_images
 from voiceover_generator import generate_voiceover
 from youtube_uploader import upload_video

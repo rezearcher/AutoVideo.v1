@@ -61,8 +61,7 @@ jobs:
         region: ${{ env.REGION }}
         image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
         flags: >-
-          --set-env-vars=YOUTUBE_ENABLED=true,GOOGLE_CLOUD_PROJECT=av-8675309
-          --update-secrets=OPENAI_API_KEY=openai-api-key:latest,ELEVENLABS_API_KEY=elevenlabs-api-key:latest
+          --set-env-vars=YOUTUBE_ENABLED=true,GOOGLE_CLOUD_PROJECT=av-8675309,OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
 
     - name: Show Output
       run: echo ${{ steps.deploy.outputs.url }} 

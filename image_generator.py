@@ -30,7 +30,7 @@ def generate_image(prompt, output_path):
             size="1024x1024"
         )
         
-        image_url = response['data'][0]['url']
+        image_url = response.data[0].url
         
         # Download the image
         image_response = requests.get(image_url)

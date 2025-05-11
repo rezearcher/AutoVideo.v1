@@ -1,6 +1,6 @@
 import os
 import logging
-import openai
+import openai  # Using openai package version 0.28.0
 from dotenv import load_dotenv
 from datetime import datetime
 import time

@@ -60,7 +60,7 @@ jobs:
         service: ${{ env.SERVICE_NAME }}
         region: ${{ env.REGION }}
         image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
-        flags: '--set-env-vars=YOUTUBE_ENABLED=true'
+        flags: '--set-env-vars=YOUTUBE_ENABLED=true,GOOGLE_CLOUD_PROJECT=av-8675309'
 
     - name: Show Output
       run: echo ${{ steps.deploy.outputs.url }} 

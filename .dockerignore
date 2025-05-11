@@ -4,25 +4,25 @@
 
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
+*.pyc
+*.pyo
 *.egg-info/
-.installed.cfg
-*.egg
+dist/
+build/
+.venv/
+new_venv/
+
+# Development
+.env
+*.log
+
+# Output and temporary files
+output/
+secrets/
+
+# Keep .files directory
+!.files/
+!.files/client_secret.json
 
 # Virtual Environment
 venv/
@@ -38,13 +38,8 @@ ENV/
 *.log
 
 # Local development
-.env
 .env.local
 .env.*.local
-
-# Output directories
-output/
-secrets/
 
 # Test files
 test/

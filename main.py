@@ -200,13 +200,7 @@ def initialize_app():
         logging.info("Checking environment variables...")
         required_vars = [
             "OPENAI_API_KEY",
-            "OPENAI_ORG_ID",
-            "ELAI_API_KEY",
-            "DID_API_KEY",
-            "IMGUR_CLIENT_ID",
-            "IMGUR_CLIENT_SECRET",
             "ELEVENLABS_API_KEY",
-            "PEXELS_API_KEY",
             "YOUTUBE_CLIENT_ID",
             "YOUTUBE_CLIENT_SECRET",
             "YOUTUBE_PROJECT_ID"
@@ -214,63 +208,24 @@ def initialize_app():
         
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         if missing_vars:
-            logging.warning(f"Missing environment variables: {', '.join(missing_vars)}")
-            # Don't raise exception, just log warning
+            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
         
-        is_initialized = True
         logging.info("Application initialization completed successfully")
+        is_initialized = True
+        
+        # Start video generation in a background thread
+        thread = threading.Thread(target=generate_video)
+        thread.daemon = True
+        thread.start()
         
     except Exception as e:
-        logging.error(f"Failed to initialize application: {str(e)}")
-        # Don't raise exception, just log error
-
-def run_video_generation():
-    """Run the video generation pipeline on startup and exit after completion."""
-    global is_generating
-    try:
-        # Read prompt from environment variable or fallback file
-        prompt = os.getenv("VIDEO_PROMPT")
-        if not prompt:
-            prompt_file = "/app/prompt.txt"
-            if os.path.exists(prompt_file):
-                with open(prompt_file, "r") as f:
-                    prompt = f.read().strip()
-            else:
-                logging.error("No prompt provided via VIDEO_PROMPT or /app/prompt.txt")
-                sys.exit(1)
-        
-        logging.info(f"Starting video generation with prompt: {prompt}")
-        generate_video()
-        logging.info("Video generation completed, exiting container")
-        sys.exit(0)
-    except Exception as e:
-        logging.error(f"Error in run_video_generation: {str(e)}")
-        sys.exit(1)
+        logging.error(f"Error initializing application: {str(e)}")
+        raise
 
 # Initialize the application
-logging.info("Starting application...")
 initialize_app()
-logging.info("Application started successfully")
 
-# Create the WSGI application instance for gunicorn
+# Create WSGI application instance
 logging.info("Creating WSGI application instance...")
 application = app
 logging.info("WSGI application instance created")
-
-if __name__ == "__main__":
-    # Start Flask server in a background thread
-    port = int(os.environ.get("PORT", 8080))
-    flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port))
-    flask_thread.daemon = True
-    flask_thread.start()
-    logging.info(f"Flask server started on port {port}")
-
-    try:
-        # Run video generation in main thread
-        logging.info("Starting video generation...")
-        generate_video()
-        logging.info("Video generation completed, exiting...")
-        sys.exit(0)
-    except Exception as e:
-        logging.error(f"Error during video generation: {e}")
-        sys.exit(1)

@@ -1,6 +1,5 @@
 import os
 import json
-import pickle
 import logging
 from datetime import datetime, timedelta
 from google.oauth2.credentials import Credentials
@@ -14,37 +13,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
-TOKEN_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.files', 'token.pickle')
-TOKEN_INFO_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.files', 'token_info.json')
-CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.files', 'client_secret.json')
 
 class TokenManager:
     def __init__(self):
         self.credentials = None
         self.youtube = None
-        self.token_info = self._load_token_info()
-
-    def _load_token_info(self):
-        """Load token information including last refresh time."""
-        if os.path.exists(TOKEN_INFO_FILE):
-            try:
-                with open(TOKEN_INFO_FILE, 'r') as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.warning(f"Error loading token info: {e}")
-        return {
+        self.token_info = {
             'last_refresh': None,
             'refresh_count': 0,
             'last_error': None
         }
-
-    def _save_token_info(self):
-        """Save token information."""
-        try:
-            with open(TOKEN_INFO_FILE, 'w') as f:
-                json.dump(self.token_info, f)
-        except Exception as e:
-            logger.warning(f"Error saving token info: {e}")
 
     def _should_refresh_token(self):
         """Determine if token should be refreshed based on Google's guidelines."""
@@ -70,45 +48,43 @@ class TokenManager:
     def get_credentials(self):
         """Get valid credentials for YouTube API."""
         try:
-            # Load existing token if available
-            if os.path.exists(TOKEN_FILE):
-                with open(TOKEN_FILE, 'rb') as token:
-                    self.credentials = pickle.load(token)
+            # Get credentials from environment variables
+            client_id = os.getenv('YOUTUBE_CLIENT_ID')
+            client_secret = os.getenv('YOUTUBE_CLIENT_SECRET')
+            project_id = os.getenv('YOUTUBE_PROJECT_ID')
+
+            if not all([client_id, client_secret, project_id]):
+                raise ValueError("Missing required YouTube credentials in environment variables")
+
+            # Create credentials object from environment variables
+            self.credentials = Credentials(
+                None,  # No token initially
+                refresh_token=None,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=SCOPES
+            )
 
             # Check if we need to refresh the token
             if self._should_refresh_token():
-                if self.credentials and self.credentials.expired and self.credentials.refresh_token:
-                    try:
-                        self.credentials.refresh(Request())
-                        self.token_info['refresh_count'] += 1
-                        self.token_info['last_error'] = None
-                    except RefreshError as e:
-                        logger.warning(f"Token refresh failed: {e}")
-                        self.token_info['last_error'] = str(e)
-                        self.credentials = None
-                else:
-                    # In Cloud Run, we should use the pre-generated token
-                    if os.path.exists(TOKEN_FILE):
-                        with open(TOKEN_FILE, 'rb') as token:
-                            self.credentials = pickle.load(token)
-                            self.token_info['refresh_count'] = 1
-                            self.token_info['last_error'] = None
-                    else:
-                        raise Exception("No token file found in .files directory")
+                try:
+                    self.credentials.refresh(Request())
+                    self.token_info['refresh_count'] += 1
+                    self.token_info['last_error'] = None
+                except RefreshError as e:
+                    logger.warning(f"Token refresh failed: {e}")
+                    self.token_info['last_error'] = str(e)
+                    self.credentials = None
+                    raise
 
-                # Save the new token
-                with open(TOKEN_FILE, 'wb') as token:
-                    pickle.dump(self.credentials, token)
-                
                 self.token_info['last_refresh'] = datetime.now().isoformat()
-                self._save_token_info()
 
             return self.credentials
 
         except Exception as e:
             logger.error(f"Error in get_credentials: {e}")
             self.token_info['last_error'] = str(e)
-            self._save_token_info()
             raise
 
     def get_youtube_service(self):
@@ -118,25 +94,10 @@ class TokenManager:
             self.youtube = build('youtube', 'v3', credentials=credentials)
         return self.youtube
 
-    def clear_token(self):
-        """Clear stored token and token info."""
-        if os.path.exists(TOKEN_FILE):
-            os.remove(TOKEN_FILE)
-        if os.path.exists(TOKEN_INFO_FILE):
-            os.remove(TOKEN_INFO_FILE)
-        self.credentials = None
-        self.youtube = None
-        self.token_info = {
-            'last_refresh': None,
-            'refresh_count': 0,
-            'last_error': None
-        }
-        self._save_token_info()
-
     def get_token_status(self):
         """Get current token status information."""
         return {
-            'has_token': os.path.exists(TOKEN_FILE),
+            'has_credentials': bool(self.credentials),
             'last_refresh': self.token_info['last_refresh'],
             'refresh_count': self.token_info['refresh_count'],
             'last_error': self.token_info['last_error']

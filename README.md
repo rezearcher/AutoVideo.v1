@@ -1,16 +1,153 @@
 # **AutoVideo v1 — AI Auto Video Generator**
 
-A fully automated, AI-powered storytelling video generator.
+An automated video generation pipeline that creates engaging videos from AI-generated stories, complete with images, voiceovers, and YouTube uploads.
 
-- Generates a story from a text prompt using **OpenAI GPT**.
-- Creates images using **OpenAI DALL-E**.
-- Adds voiceover using **ElevenLabs**.
-- Assembles final video output using **MoviePy** and **FFmpeg**.
-- Automatically uploads to **YouTube**.
-- Runs on **Google Cloud Run** with daily scheduled execution.
+## Architecture
 
-**V1 Focus:**  
-Create a video autonomously, containerize it, deploy it to the cloud, and automatically upload to **YouTube**.
+The application consists of two main components:
+
+1. **Main Application (av-app)**
+   - Flask-based web service
+   - Handles API endpoints and coordination
+   - Manages video generation pipeline
+   - Deployed on Google Cloud Run
+
+2. **GPU Worker**
+   - Dedicated service for video processing
+   - Handles computationally intensive tasks
+   - Optimized for GPU acceleration
+   - Deployed on Google Cloud Run with GPU support
+
+## Pipeline Process
+
+1. **Story Generation**
+   - Uses OpenAI to generate engaging stories
+   - Extracts key scenes for visualization
+
+2. **Image Generation**
+   - Creates images for each scene
+   - Ensures visual consistency
+
+3. **Voiceover Generation**
+   - Converts story text to natural-sounding speech
+   - Uses ElevenLabs for high-quality voice synthesis
+
+4. **Video Creation**
+   - Combines images and voiceover
+   - Adds transitions and effects
+   - Optimizes for YouTube
+
+5. **YouTube Upload**
+   - Handles authentication and upload
+   - Manages video metadata
+
+## Setup
+
+### Prerequisites
+
+- Python 3.11+
+- Docker
+- Google Cloud SDK
+- Required API keys:
+  - OpenAI API Key
+  - ElevenLabs API Key
+  - YouTube API credentials
+  - Google Cloud Project
+
+### Environment Variables
+
+```bash
+OPENAI_API_KEY=your_openai_key
+OPENAI_ORG_ID=your_org_id
+ELAI_API_KEY=your_elai_key
+DID_API_KEY=your_did_key
+IMGUR_CLIENT_ID=your_imgur_client_id
+IMGUR_CLIENT_SECRET=your_imgur_client_secret
+ELEVENLABS_API_KEY=your_elevenlabs_key
+PEXELS_API_KEY=your_pexels_key
+YOUTUBE_CLIENT_ID=your_youtube_client_id
+YOUTUBE_CLIENT_SECRET=your_youtube_client_secret
+YOUTUBE_PROJECT_ID=your_youtube_project_id
+GOOGLE_CLOUD_PROJECT=your_gcp_project_id
+```
+
+### Local Development
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/rezearcher/AutoVideo.v1.git
+   cd AI-Auto-Video-Generator
+   ```
+
+2. Create and activate virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   # or
+   .\venv\Scripts\activate  # Windows
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Run the application:
+   ```bash
+   python main.py
+   ```
+
+### Docker Build
+
+1. Build the image:
+   ```bash
+   docker build -t av-app .
+   ```
+
+2. Run the container:
+   ```bash
+   docker run -p 8080:8080 av-app
+   ```
+
+## Deployment
+
+### Google Cloud Run
+
+1. Build and push the container:
+   ```bash
+   gcloud builds submit --tag gcr.io/$GOOGLE_CLOUD_PROJECT/av-app
+   ```
+
+2. Deploy the service:
+   ```bash
+   gcloud run deploy av-app \
+     --image gcr.io/$GOOGLE_CLOUD_PROJECT/av-app \
+     --platform managed \
+     --region us-central1 \
+     --allow-unauthenticated
+   ```
+
+## API Endpoints
+
+- `GET /health` - Health check endpoint
+- `GET /status` - Get current video generation status
+- `POST /generate` - Start video generation process
+
+## Monitoring
+
+The application includes comprehensive logging and timing metrics for each phase of the video generation process. You can monitor the progress through the `/status` endpoint.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 
@@ -181,6 +318,36 @@ The application is containerized using Docker and includes:
 - Health checks and proper logging
 - Non-root user for security
 - Proper file permissions
+
+# 🔄 **Split Architecture**
+
+The application uses a split architecture with two main components:
+
+1. **Web Application Container**
+   - Handles HTTP requests and API endpoints
+   - Manages story generation and image creation
+   - Coordinates the video generation process
+   - Runs on standard Cloud Run instances
+
+2. **GPU Worker Container**
+   - Dedicated container for video processing
+   - Uses NVIDIA CUDA for hardware acceleration
+   - Handles video rendering and encoding
+   - Runs on GPU-enabled instances
+   - Communicates with main app via HTTP
+
+This architecture provides several benefits:
+- Better resource utilization
+- Improved scalability
+- Independent scaling of web and processing components
+- Cost optimization (GPU only when needed)
+- Better error isolation
+
+The worker container is built using `Dockerfile.gpu-worker` and includes:
+- NVIDIA CUDA runtime
+- FFmpeg with CUDA support
+- FastAPI for worker API endpoints
+- Async processing capabilities
 
 ---
 

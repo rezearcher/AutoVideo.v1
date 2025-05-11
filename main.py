@@ -10,6 +10,7 @@ from datetime import datetime
 import threading
 import time
 from timing_metrics import TimingMetrics
+from topic_manager import TopicManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -78,10 +79,13 @@ def generate_video_thread():
         output_dir = f"/app/output/run_{timestamp}"
         os.makedirs(output_dir, exist_ok=True)
         
+        # Initialize topic manager and get next topic
+        topic_manager = TopicManager()
+        story_prompt = topic_manager.get_next_topic()
+        
         # Generate content
         timing_metrics.start_phase("story_generation")
-        prompt = "Create a video about the history of artificial intelligence, focusing on key milestones and breakthroughs"
-        story = generate_story(prompt)
+        story = generate_story(story_prompt)
         timing_metrics.end_phase()
         
         timing_metrics.start_phase("image_generation")

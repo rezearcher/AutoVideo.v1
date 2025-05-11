@@ -43,12 +43,6 @@ jobs:
     - name: Authorize Docker push
       run: gcloud auth configure-docker
 
-    - name: Create .files directory
-      run: |
-        mkdir -p .files
-        echo "${{ secrets.YOUTUBE_CLIENT_SECRET }}" > .files/client_secret.json
-        echo "${{ secrets.YOUTUBE_TOKEN }}" | base64 -d > .files/token.pickle
-
     - name: Build and Push Container
       run: |
         docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }} .
@@ -64,4 +58,4 @@ jobs:
           --set-env-vars=YOUTUBE_ENABLED=true,GOOGLE_CLOUD_PROJECT=av-8675309,OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
 
     - name: Show Output
-      run: echo ${{ steps.deploy.outputs.url }} 
+      run: echo ${{ steps.deploy.outputs.url }}

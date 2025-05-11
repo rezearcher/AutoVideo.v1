@@ -4,6 +4,10 @@ FROM python:3.11-slim as builder
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    python3-dev \
+    gcc \
+    libjpeg-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -24,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     fonts-dejavu \
     fonts-freefont-ttf \
+    libjpeg62-turbo \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables

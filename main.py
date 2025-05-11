@@ -268,7 +268,11 @@ except Exception as e:
     logging.error(f"Error starting video generation: {str(e)}")
 
 if __name__ == "__main__":
-    # Start Flask server in development mode
-    port = int(os.environ.get("PORT", 8080))
-    logging.info(f"Starting Flask development server on port {port}")
-    app.run(host='0.0.0.0', port=port)
+    try:
+        logging.info("Starting video generation...")
+        generate_video()
+        logging.info("Video generation completed, exiting...")
+        sys.exit(0)
+    except Exception as e:
+        logging.error(f"Error during video generation: {e}")
+        sys.exit(1)

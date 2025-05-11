@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpng16-16 \
     libtiff6 \
     libwebp7 \
+    imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables

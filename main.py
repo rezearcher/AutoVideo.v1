@@ -128,6 +128,10 @@ def generate_video_thread():
 # Initialize the application
 try:
     is_initialized = initialize_app()
+    # Start video generation in a background thread
+    thread = threading.Thread(target=generate_video_thread)
+    thread.daemon = True
+    thread.start()
 except Exception as e:
     logger.error(f"Failed to initialize application: {str(e)}")
     is_initialized = False
@@ -136,10 +140,5 @@ except Exception as e:
 application = app
 
 if __name__ == "__main__":
-    # Start video generation in a background thread
-    thread = threading.Thread(target=generate_video_thread)
-    thread.daemon = True
-    thread.start()
-    
     # Start Flask server
     app.run(host='0.0.0.0', port=8080)

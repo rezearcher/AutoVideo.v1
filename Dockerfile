@@ -24,8 +24,9 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python packages
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python packages with latest pip
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Create necessary directories
 RUN mkdir -p /app/output /app/secrets /app/fonts

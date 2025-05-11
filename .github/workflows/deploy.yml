@@ -59,6 +59,26 @@ jobs:
             }
         fi
 
+    - name: Create YouTube credentials
+      run: |
+        # Create .files directory
+        mkdir -p .files
+        
+        # Create client_secret.json from secrets
+        cat > .files/client_secret.json << EOF
+        {
+          "installed": {
+            "client_id": "${{ secrets.YOUTUBE_CLIENT_ID }}",
+            "client_secret": "${{ secrets.YOUTUBE_CLIENT_SECRET }}",
+            "project_id": "${{ secrets.YOUTUBE_PROJECT_ID }}",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob", "http://localhost"]
+          }
+        }
+        EOF
+
     - name: Authorize Docker push
       run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
@@ -76,5 +96,5 @@ jobs:
           --region ${{ env.REGION }} \
           --platform managed \
           --allow-unauthenticated \
-          --update-env-vars="OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},OPENAI_ORG_ID=${{ secrets.OPENAI_ORG_ID }},ELAI_API_KEY=${{ secrets.ELAI_API_KEY }},DID_API_KEY=${{ secrets.DID_API_KEY }},IMGUR_CLIENT_ID=${{ secrets.IMGUR_CLIENT_ID }},IMGUR_CLIENT_SECRET=${{ secrets.IMGUR_CLIENT_SECRET }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }},PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }},YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }},YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }},YOUTUBE_PROJECT_ID=${{ secrets.YOUTUBE_PROJECT_ID }}" \
+          --update-env-vars="OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},OPENAI_ORG_ID=${{ secrets.OPENAI_ORG_ID }},ELAI_API_KEY=${{ secrets.ELAI_API_KEY }},DID_API_KEY=${{ secrets.DID_API_KEY }},IMGUR_CLIENT_ID=${{ secrets.IMGUR_CLIENT_ID }},IMGUR_CLIENT_SECRET=${{ secrets.IMGUR_CLIENT_SECRET }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }},PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }},YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }},YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }},YOUTUBE_PROJECT_ID=${{ secrets.YOUTUBE_PROJECT_ID }},YOUTUBE_ENABLED=true" \
           --update-labels="managed-by=github-actions,commit-sha=${{ github.sha }}" 

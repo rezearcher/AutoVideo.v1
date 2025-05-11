@@ -65,29 +65,6 @@ def status():
         "timing_metrics": timing_metrics.get_metrics()
     })
 
-@app.route('/generate', methods=['POST'])
-def generate_video():
-    """Start video generation process."""
-    global is_generating, last_generation_time, last_generation_status
-    
-    if is_generating:
-        return jsonify({"status": "error", "message": "Video generation already in progress"}), 409
-    
-    is_generating = True
-    last_generation_time = datetime.now().isoformat()
-    last_generation_status = "in_progress"
-    
-    # Start video generation in a background thread
-    thread = threading.Thread(target=generate_video_thread)
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify({
-        "status": "success",
-        "message": "Video generation started",
-        "start_time": last_generation_time
-    })
-
 def generate_video_thread():
     """Background thread for video generation."""
     global is_generating, last_generation_status
@@ -103,7 +80,7 @@ def generate_video_thread():
         
         # Generate content
         timing_metrics.start_phase("story_generation")
-        story = generate_story()
+        story = generate_story("Create a video about the history of artificial intelligence, focusing on key milestones and breakthroughs")
         timing_metrics.end_phase()
         
         timing_metrics.start_phase("image_generation")
@@ -158,5 +135,10 @@ except Exception as e:
 application = app
 
 if __name__ == "__main__":
-    # Start Flask server in development mode
+    # Start video generation in a background thread
+    thread = threading.Thread(target=generate_video_thread)
+    thread.daemon = True
+    thread.start()
+    
+    # Start Flask server
     app.run(host='0.0.0.0', port=8080)

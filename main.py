@@ -71,7 +71,7 @@ def generate_video_thread():
     
     try:
         # Start timing
-        timing_metrics.start_phase("total")
+        timing_metrics.start_pipeline()
         
         # Create timestamped output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -80,7 +80,8 @@ def generate_video_thread():
         
         # Generate content
         timing_metrics.start_phase("story_generation")
-        story = generate_story("Create a video about the history of artificial intelligence, focusing on key milestones and breakthroughs")
+        prompt = "Create a video about the history of artificial intelligence, focusing on key milestones and breakthroughs"
+        story = generate_story(prompt)
         timing_metrics.end_phase()
         
         timing_metrics.start_phase("image_generation")
@@ -122,7 +123,7 @@ def generate_video_thread():
         last_generation_status = f"error: {str(e)}"
     finally:
         is_generating = False
-        timing_metrics.end_phase("total")
+        timing_metrics.end_pipeline()
 
 # Initialize the application
 try:

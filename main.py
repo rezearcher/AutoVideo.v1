@@ -93,10 +93,7 @@ def generate_video_thread():
         image_prompts = extract_image_prompts(story)
         
         timing_metrics.start_phase("image_generation")
-        image_paths = []
-        for prompt in image_prompts:
-            image_path = generate_images(prompt, output_dir)
-            image_paths.append(image_path)
+        image_paths = generate_images(image_prompts, output_dir)
         timing_metrics.end_phase()
         
         timing_metrics.start_phase("voiceover_generation")

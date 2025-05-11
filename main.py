@@ -1,31 +1,100 @@
 import os
 import logging
-import asyncio
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from worker_client import WorkerClient
 from story_generator import generate_story
 from image_generator import generate_images
 from voiceover_generator import generate_voiceover
 from youtube_uploader import upload_video
 from datetime import datetime
+import threading
+import time
 from timing_metrics import TimingMetrics
-from flask_async import FlaskAsync
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-app = FlaskAsync(__name__)
+# Initialize Flask app
+app = Flask(__name__)
+
+# Global variables
 is_generating = False
 is_initialized = False
+last_generation_time = None
+last_generation_status = None
 timing_metrics = TimingMetrics()
 
-async def generate_video():
-    """Generate a video using the GPU worker."""
-    global is_generating
+def initialize_app():
+    """Initialize the application and check required environment variables."""
+    logger.info("Starting application initialization...")
+    
+    # Create necessary directories
+    logger.info("Creating application directories...")
+    os.makedirs('output', exist_ok=True)
+    os.makedirs('secrets', exist_ok=True)
+    os.makedirs('fonts', exist_ok=True)
+    logger.info("Application directories created successfully")
+    
+    # Check required environment variables
+    logger.info("Checking environment variables...")
+    required_vars = ['GOOGLE_CLOUD_PROJECT']
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    
+    if missing_vars:
+        error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
+        logger.error(f"Error initializing application: {error_msg}")
+        raise ValueError(error_msg)
+    
+    logger.info("Application initialized successfully")
+    return True
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint."""
+    return jsonify({"status": "healthy"})
+
+@app.route('/status')
+def status():
+    """Get the current status of video generation."""
+    return jsonify({
+        "is_generating": is_generating,
+        "is_initialized": is_initialized,
+        "last_generation_time": last_generation_time,
+        "last_generation_status": last_generation_status,
+        "timing_metrics": timing_metrics.get_metrics()
+    })
+
+@app.route('/generate', methods=['POST'])
+def generate_video():
+    """Start video generation process."""
+    global is_generating, last_generation_time, last_generation_status
+    
+    if is_generating:
+        return jsonify({"status": "error", "message": "Video generation already in progress"}), 409
+    
+    is_generating = True
+    last_generation_time = datetime.now().isoformat()
+    last_generation_status = "in_progress"
+    
+    # Start video generation in a background thread
+    thread = threading.Thread(target=generate_video_thread)
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({
+        "status": "success",
+        "message": "Video generation started",
+        "start_time": last_generation_time
+    })
+
+def generate_video_thread():
+    """Background thread for video generation."""
+    global is_generating, last_generation_status
+    
     try:
-        is_generating = True
-        timing_metrics.start_pipeline()
+        # Start timing
+        timing_metrics.start_phase("total")
         
         # Create timestamped output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -34,21 +103,21 @@ async def generate_video():
         
         # Generate content
         timing_metrics.start_phase("story_generation")
-        story = await generate_story()
+        story = generate_story()
         timing_metrics.end_phase()
         
         timing_metrics.start_phase("image_generation")
-        image_paths = await generate_images(story, output_dir)
+        image_paths = generate_images(story, output_dir)
         timing_metrics.end_phase()
         
         timing_metrics.start_phase("voiceover_generation")
-        audio_path = await generate_voiceover(story, output_dir)
+        audio_path = generate_voiceover(story, output_dir)
         timing_metrics.end_phase()
         
         # Create worker
         timing_metrics.start_phase("worker_creation")
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-        worker_url = await WorkerClient.create_worker(project_id)
+        worker_url = WorkerClient.create_worker(project_id)
         if not worker_url:
             raise Exception("Failed to create GPU worker")
         timing_metrics.end_phase()
@@ -57,7 +126,7 @@ async def generate_video():
         timing_metrics.start_phase("video_processing")
         worker = WorkerClient(worker_url)
         output_path = f"{output_dir}/final_video.mp4"
-        success = await worker.process_video(image_paths, output_path, audio_path)
+        success = worker.process_video(image_paths, output_path, audio_path)
         timing_metrics.end_phase()
         
         if not success:
@@ -65,88 +134,27 @@ async def generate_video():
         
         # Upload to YouTube
         timing_metrics.start_phase("youtube_upload")
-        await upload_video(output_path, story)
+        upload_video(output_path, story)
         timing_metrics.end_phase()
         
         logger.info("Video generation and upload completed successfully")
         
+        last_generation_status = "completed"
     except Exception as e:
-        logger.error(f"Error generating video: {e}")
-        raise
+        logger.error(f"Error generating video: {str(e)}")
+        last_generation_status = f"error: {str(e)}"
     finally:
-        timing_metrics.end_pipeline()
         is_generating = False
-
-@app.route('/generate', methods=['POST'])
-async def start_generation():
-    """Start video generation."""
-    global is_generating
-    if is_generating:
-        return jsonify({"status": "already_generating"}), 409
-    
-    asyncio.create_task(generate_video())
-    return jsonify({"status": "started"}), 202
-
-@app.route('/status', methods=['GET'])
-async def get_status():
-    """Get the current generation status."""
-    metrics = timing_metrics.get_metrics()
-    return jsonify({
-        "is_generating": is_generating,
-        "is_initialized": is_initialized,
-        "last_generation_status": "in_progress" if is_generating else "idle",
-        "last_generation_time": datetime.now().isoformat() if is_generating else None,
-        "timing_metrics": {
-            "total_duration": metrics["total_duration"],
-            "phase_times": metrics["phase_times"],
-            "current_phase": metrics["current_phase"],
-            "current_phase_duration": metrics["current_phase_duration"]
-        }
-    })
-
-@app.route('/health')
-async def health_check():
-    """Health check endpoint."""
-    return jsonify({"status": "healthy"}), 200
-
-def initialize_app():
-    """Initialize the application."""
-    global is_initialized
-    try:
-        logger.info("Starting application initialization...")
-        
-        # Create necessary directories
-        logger.info("Creating application directories...")
-        os.makedirs("/app/output", exist_ok=True)
-        os.makedirs("/app/secrets", exist_ok=True)
-        logger.info("Application directories created successfully")
-        
-        # Check environment variables
-        logger.info("Checking environment variables...")
-        required_vars = [
-            "OPENAI_API_KEY",
-            "ELEVENLABS_API_KEY",
-            "YOUTUBE_CLIENT_ID",
-            "YOUTUBE_CLIENT_SECRET",
-            "YOUTUBE_PROJECT_ID",
-            "GOOGLE_CLOUD_PROJECT"
-        ]
-        
-        missing_vars = [var for var in required_vars if not os.getenv(var)]
-        if missing_vars:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
-        
-        logger.info("Application initialization completed successfully")
-        is_initialized = True
-        
-    except Exception as e:
-        logger.error(f"Error initializing application: {str(e)}")
-        raise
+        timing_metrics.end_phase("total")
 
 # Initialize the application
-initialize_app()
+try:
+    is_initialized = initialize_app()
+except Exception as e:
+    logger.error(f"Failed to initialize application: {str(e)}")
+    is_initialized = False
 
-# Create WSGI application instance for Gunicorn
+# Expose the WSGI application
 application = app
 
 if __name__ == "__main__":

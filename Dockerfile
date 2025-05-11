@@ -33,8 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-freefont-ttf \
     libjpeg62-turbo \
     libpng16-16 \
-    libtiff5 \
-    libwebp6 \
+    libtiff6 \
+    libwebp7 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables

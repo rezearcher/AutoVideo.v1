@@ -71,6 +71,7 @@ def generate_video_thread():
     global is_generating, last_generation_status
     
     try:
+        is_generating = True
         # Start timing
         timing_metrics.start_pipeline()
         
@@ -88,8 +89,11 @@ def generate_video_thread():
         story = generate_story(story_prompt)
         timing_metrics.end_phase()
         
+        # Extract image prompts from the story
+        image_prompts = extract_image_prompts(story)
+        
         timing_metrics.start_phase("image_generation")
-        image_paths = generate_images(story, output_dir)
+        image_paths = generate_images(image_prompts, output_dir)
         timing_metrics.end_phase()
         
         timing_metrics.start_phase("voiceover_generation")

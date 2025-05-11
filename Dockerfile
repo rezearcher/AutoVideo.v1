@@ -1,16 +1,35 @@
-# Base image
+# Build stage
+FROM python:3.11-slim as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and activate virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Runtime stage
 FROM python:3.11-slim
 
-# Install OS dependencies including fonts
+# Install runtime dependencies only
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    curl \
-    git \
-    build-essential \
     fonts-liberation \
     fonts-dejavu \
     fonts-freefont-ttf \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Set environment variables
 ENV TZ=UTC
@@ -18,25 +37,16 @@ ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance --timeout 120"
 
-# Create app directory
+# Create app directory and non-root user
 WORKDIR /app
-
-# Copy requirements first for better caching
-COPY requirements.txt .
-
-# Install Python packages with latest pip
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir google-auth-oauthlib google-api-python-client
-
-# Create necessary directories
-RUN mkdir -p /app/output /app/secrets /app/fonts
+RUN useradd -m appuser && \
+    mkdir -p /app/output /app/secrets /app/fonts && \
+    chown -R appuser:appuser /app
 
 # Copy application code
-COPY . .
+COPY --chown=appuser:appuser . .
 
-# Create non-root user
-RUN useradd -m appuser && chown -R appuser:appuser /app
+# Switch to non-root user
 USER appuser
 
 # Health check

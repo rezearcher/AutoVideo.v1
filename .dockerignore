@@ -34,9 +34,34 @@ ENV/
 *.swp
 *.swo
 
-# Project specific
+# Logs
+*.log
+
+# Local development
+.env
+.env.local
+.env.*.local
+
+# Output directories
 output/
 secrets/
-*.log
+
+# Test files
+test/
+tests/
+*.test.py
+*_test.py
+
+# Documentation
+docs/
+*.md
+LICENSE
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Project specific
 token.pickle
 token_info.json 

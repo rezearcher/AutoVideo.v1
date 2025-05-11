@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libjpeg-dev \
     zlib1g-dev \
+    libpng-dev \
+    libtiff-dev \
+    libwebp-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -29,6 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu \
     fonts-freefont-ttf \
     libjpeg62-turbo \
+    libpng16-16 \
+    libtiff5 \
+    libwebp6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables

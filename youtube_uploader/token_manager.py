@@ -14,8 +14,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
-TOKEN_FILE = os.path.join(os.path.dirname(__file__), 'token.pickle')
-TOKEN_INFO_FILE = os.path.join(os.path.dirname(__file__), 'token_info.json')
+TOKEN_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.files', 'token.pickle')
+TOKEN_INFO_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.files', 'token_info.json')
 CREDENTIALS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.files', 'client_secret.json')
 
 class TokenManager:
@@ -87,11 +87,14 @@ class TokenManager:
                         self.token_info['last_error'] = str(e)
                         self.credentials = None
                 else:
-                    # Get new token through OAuth flow
-                    flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-                    self.credentials = flow.run_local_server(port=0)
-                    self.token_info['refresh_count'] = 1
-                    self.token_info['last_error'] = None
+                    # In Cloud Run, we should use the pre-generated token
+                    if os.path.exists(TOKEN_FILE):
+                        with open(TOKEN_FILE, 'rb') as token:
+                            self.credentials = pickle.load(token)
+                            self.token_info['refresh_count'] = 1
+                            self.token_info['last_error'] = None
+                    else:
+                        raise Exception("No token file found in .files directory")
 
                 # Save the new token
                 with open(TOKEN_FILE, 'wb') as token:

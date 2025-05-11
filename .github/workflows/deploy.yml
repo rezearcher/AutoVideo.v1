@@ -1,12 +1,9 @@
 name: Deploy to Cloud Run
 
 on:
-  schedule:
-    - cron: '0 13 * * *'  # 9 AM EST = 13:00 UTC
-  workflow_dispatch:  # Allow manual triggers
   push:
-    branches:
-      - main  # Trigger on pushes to main branch
+    branches: [ main ]
+  workflow_dispatch:
 
 env:
   PROJECT_ID: av-8675309
@@ -14,87 +11,47 @@ env:
   REGION: us-central1
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
 
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
 
     - name: Google Auth
       id: auth
       uses: google-github-actions/auth@v2
       with:
-        credentials_json: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-        project_id: ${{ env.PROJECT_ID }}
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+        service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
 
-    - name: Create Artifact Registry Repository
-      run: |
-        echo "Checking repository status..."
-        REPO_NAME="av-app"
-        REPO_PATH="projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/repositories/$REPO_NAME"
-        
-        # List existing repositories
-        echo "Listing existing repositories..."
-        gcloud artifacts repositories list --location=${{ env.REGION }} || true
-        
-        # Try to describe the repository
-        if gcloud artifacts repositories describe $REPO_NAME --location=${{ env.REGION }} &>/dev/null; then
-          echo "Repository $REPO_NAME already exists"
-        else
-          echo "Creating repository $REPO_NAME..."
-          gcloud artifacts repositories create $REPO_NAME \
-            --repository-format=docker \
-            --location=${{ env.REGION }} \
-            --description="Docker repository for AV App" || {
-              echo "Failed to create repository. Checking permissions..."
-              gcloud projects get-iam-policy ${{ env.PROJECT_ID }} --format=json | grep -A 5 artifactregistry
-              exit 1
-            }
-        fi
-
-    - name: Create YouTube credentials
-      run: |
-        # Create .files directory
-        mkdir -p .files
-        
-        # Create client_secret.json from secrets
-        cat > .files/client_secret.json << EOF
-        {
-          "installed": {
-            "client_id": "${{ secrets.YOUTUBE_CLIENT_ID }}",
-            "client_secret": "${{ secrets.YOUTUBE_CLIENT_SECRET }}",
-            "project_id": "${{ secrets.YOUTUBE_PROJECT_ID }}",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob", "http://localhost"]
-          }
-        }
-        EOF
-
     - name: Authorize Docker push
-      run: gcloud auth configure-docker us-central1-docker.pkg.dev
+      run: gcloud auth configure-docker
 
-    - name: Build and push Docker image
+    - name: Create .files directory
       run: |
-        IMAGE_NAME="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/av-app/${{ env.SERVICE_NAME }}"
-        docker build -t $IMAGE_NAME:latest .
-        docker push $IMAGE_NAME:latest
+        mkdir -p .files
+        echo "${{ secrets.YOUTUBE_CLIENT_SECRET }}" > .files/client_secret.json
+        echo "${{ secrets.YOUTUBE_TOKEN }}" | base64 -d > .files/token.pickle
+
+    - name: Build and Push Container
+      run: |
+        docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }} .
+        docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }}
 
     - name: Deploy to Cloud Run
-      run: |
-        # Deploy to Cloud Run with environment variables
-        gcloud run deploy ${{ env.SERVICE_NAME }} \
-          --image us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/av-app/${{ env.SERVICE_NAME }}:latest \
-          --region ${{ env.REGION }} \
-          --platform managed \
-          --allow-unauthenticated \
-          --update-env-vars="OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},OPENAI_ORG_ID=${{ secrets.OPENAI_ORG_ID }},ELAI_API_KEY=${{ secrets.ELAI_API_KEY }},DID_API_KEY=${{ secrets.DID_API_KEY }},IMGUR_CLIENT_ID=${{ secrets.IMGUR_CLIENT_ID }},IMGUR_CLIENT_SECRET=${{ secrets.IMGUR_CLIENT_SECRET }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }},PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }},YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }},YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }},YOUTUBE_PROJECT_ID=${{ secrets.YOUTUBE_PROJECT_ID }},YOUTUBE_ENABLED=true" \
-          --update-labels="managed-by=github-actions,commit-sha=${{ github.sha }}" 
+      uses: google-github-actions/deploy-cloudrun@v2
+      with:
+        service: ${{ env.SERVICE_NAME }}
+        region: ${{ env.REGION }}
+        image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        flags: '--set-env-vars=YOUTUBE_ENABLED=true'
+
+    - name: Show Output
+      run: echo ${{ steps.deploy.outputs.url }} 

@@ -55,6 +55,8 @@ jobs:
         region: ${{ env.REGION }}
         image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
         project_id: ${{ env.PROJECT_ID }}
+        flags: >-
+          --service-account=${{ secrets.WIF_SERVICE_ACCOUNT }}
 
     - name: Show Output
       run: echo ${{ steps.deploy.outputs.url }}

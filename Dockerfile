@@ -26,7 +26,7 @@ COPY requirements.txt .
 
 # Install Python packages
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir "moviepy==1.0.3" "decorator>=4.0.2" "imageio>=2.5" "imageio-ffmpeg>=0.4.0" "numpy>=1.17.3" "proglog<=1.0.0" "requests>=2.8.1" "tqdm>=4.11.2" "python-dotenv" && \
+    pip install --no-cache-dir "moviepy==1.0.3" "decorator>=4.0.2" "imageio>=2.5" "imageio-ffmpeg>=0.4.0" "numpy>=1.17.3" "proglog<=1.0.0" "requests>=2.8.1" "tqdm>=4.11.2" "python-dotenv" "openai" && \
     pip install --no-cache-dir gunicorn flask
 
 # Create necessary directories

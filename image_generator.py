@@ -1,4 +1,4 @@
-import openai
+import openai  # Using openai package version 0.28.0
 import os
 import requests
 from datetime import datetime

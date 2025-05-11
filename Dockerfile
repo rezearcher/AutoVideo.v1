@@ -2,9 +2,8 @@
 FROM python:3.11-slim as builder
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -19,17 +18,13 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Runtime stage
 FROM python:3.11-slim
 
-# Install runtime dependencies only
-RUN apt-get update && apt-get install -y \
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-liberation \
     fonts-dejavu \
     fonts-freefont-ttf \
     && rm -rf /var/lib/apt/lists/*
-
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
 
 # Set environment variables
 ENV TZ=UTC
@@ -37,16 +32,21 @@ ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance --timeout 120"
 
-# Create app directory and non-root user
+# Create app directory
 WORKDIR /app
-RUN useradd -m appuser && \
-    mkdir -p /app/output /app/secrets /app/fonts && \
-    chown -R appuser:appuser /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Create necessary directories
+RUN mkdir -p /app/output /app/secrets /app/fonts
 
 # Copy application code
-COPY --chown=appuser:appuser . .
+COPY . .
 
-# Switch to non-root user
+# Create non-root user
+RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Health check
@@ -56,5 +56,5 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE ${PORT}
 
-# Start gunicorn with proper logging and increased timeout
+# Start gunicorn
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "120", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "--capture-output", "--enable-stdio-inheritance", "main:application"] 

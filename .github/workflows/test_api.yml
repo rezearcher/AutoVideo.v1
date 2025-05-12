@@ -1,0 +1,28 @@
+name: Test OpenAI API Connectivity
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install openai
+
+    - name: Run OpenAI connectivity test
+      run: python AI-Auto-Video-Generator/test_openai_connectivity.py
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} 

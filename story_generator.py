@@ -1,6 +1,6 @@
 import os
 import logging
-import openai  # Using openai package version 0.28.0
+import openai
 from dotenv import load_dotenv
 from datetime import datetime
 import time
@@ -10,7 +10,10 @@ import sys
 load_dotenv()
 
 # Initialize OpenAI client
-client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+client = openai.OpenAI(
+    api_key=os.getenv('OPENAI_API_KEY'),
+    base_url="https://api.openai.com/v1"
+)
 
 def generate_story(prompt, timeout=60):
     """

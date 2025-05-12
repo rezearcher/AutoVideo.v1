@@ -9,11 +9,6 @@ import sys
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client
-client = openai.OpenAI(
-    api_key=os.getenv('OPENAI_API_KEY')
-)
-
 def generate_story(prompt, timeout=60):
     """
     Generate a story from a prompt with a timeout.
@@ -37,34 +32,32 @@ def generate_story(prompt, timeout=60):
             raise Exception("Story generation timed out")
             
         try:
-            logging.info("Sending request to OpenAI API...")
+            # Initialize OpenAI client
+            client = openai.OpenAI(
+                api_key=os.getenv('OPENAI_API_KEY')
+            )
+            
             response = client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": """You are a creative storyteller. When writing a story, follow this format:
-1. Title: A catchy, engaging title that captures the essence of the story
-2. Description: A brief 2-3 sentence summary that hooks the reader
-3. Story: The full story content
-
-Make sure the title and description are compelling and accurately represent the story's content."""},
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": "You are a creative storyteller."},
+                    {"role": "user", "content": f"Write a short story about: {prompt}"}
                 ],
-                temperature=0.7,
-                max_tokens=2000
+                max_tokens=500,
+                temperature=0.7
             )
             
             story = response.choices[0].message.content.strip()
-            logging.info("Story generated successfully")
-            logging.debug(f"Generated story: {story}")
-            
+            logging.info(f"Successfully generated story from prompt: {prompt}")
             return story, prompt
             
         except Exception as e:
-            logging.error(f"Error generating story: {str(e)}")
             retry_count += 1
             if retry_count >= max_retries:
+                logging.error(f"Failed to generate story after {max_retries} attempts: {str(e)}")
                 raise Exception(f"Failed to generate story after {max_retries} attempts: {str(e)}")
-            time.sleep(1)
+            logging.warning(f"Retry {retry_count}/{max_retries} after error: {str(e)}")
+            time.sleep(1)  # Wait before retrying
 
 def extract_image_prompts(story, num_scenes=5):
     """Extract image prompts from the story."""

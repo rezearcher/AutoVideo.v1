@@ -4,10 +4,7 @@ import logging
 from dotenv import load_dotenv
 import openai
 from elevenlabs import generate, set_api_key
-import google.oauth2.credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
+from youtube_uploader.token_manager import TokenManager
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -53,29 +50,11 @@ def test_elevenlabs():
 def test_youtube():
     """Test YouTube API connection"""
     try:
-        # YouTube API setup
-        SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
-        credentials = None
+        # Initialize token manager
+        token_manager = TokenManager()
         
-        # Check if we have valid credentials
-        if os.path.exists('token.json'):
-            credentials = google.oauth2.credentials.Credentials.from_authorized_user_file('token.json', SCOPES)
-        
-        # If no valid credentials available, let the user log in
-        if not credentials or not credentials.valid:
-            if credentials and credentials.expired and credentials.refresh_token:
-                credentials.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'client_secrets.json', SCOPES)
-                credentials = flow.run_local_server(port=0)
-            
-            # Save the credentials for the next run
-            with open('token.json', 'w') as token:
-                token.write(credentials.to_json())
-        
-        # Build the YouTube service
-        youtube = build('youtube', 'v3', credentials=credentials)
+        # Get YouTube service
+        youtube = token_manager.get_youtube_service()
         
         # Test the connection by getting channel info
         request = youtube.channels().list(

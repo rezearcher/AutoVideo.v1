@@ -11,8 +11,7 @@ load_dotenv()
 
 # Initialize OpenAI client
 client = openai.OpenAI(
-    api_key=os.getenv('OPENAI_API_KEY'),
-    base_url="https://api.openai.com/v1"
+    api_key=os.getenv('OPENAI_API_KEY')
 )
 
 def generate_story(prompt, timeout=60):

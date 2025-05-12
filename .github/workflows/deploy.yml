@@ -48,6 +48,13 @@ jobs:
         docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }} .
         docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }}
 
+    - name: Remove Secrets
+      run: |
+        gcloud run services update av-app \
+          --region us-central1 \
+          --project av-8675309 \
+          --remove-secrets=OPENAI_API_KEY,ELEVENLABS_API_KEY
+
     - name: Deploy to Cloud Run
       uses: google-github-actions/deploy-cloudrun@v2
       with:
@@ -57,7 +64,6 @@ jobs:
         project_id: ${{ env.PROJECT_ID }}
         flags: >-
           --service-account=${{ secrets.WIF_SERVICE_ACCOUNT }}
-          --no-traffic
           --set-env-vars=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
 
     - name: Show Output

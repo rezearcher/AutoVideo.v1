@@ -13,8 +13,10 @@ logger = logging.getLogger(__name__)
 def test_openai():
     """Test OpenAI API connection"""
     try:
+        # Initialize OpenAI client without proxies
         client = openai.OpenAI(
-            api_key=os.getenv("OPENAI_API_KEY")
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url="https://api.openai.com/v1"
         )
         
         response = client.chat.completions.create(
@@ -50,6 +52,11 @@ def test_elevenlabs():
 def test_youtube():
     """Test YouTube API connection"""
     try:
+        # Skip YouTube test if not enabled
+        if not os.getenv("YOUTUBE_ENABLED", "false").lower() == "true":
+            logger.info("YouTube API Test: SKIPPED (not enabled)")
+            return True
+
         # Initialize token manager
         token_manager = TokenManager()
         

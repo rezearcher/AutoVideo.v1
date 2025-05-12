@@ -63,8 +63,16 @@ jobs:
         image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
         project_id: ${{ env.PROJECT_ID }}
         flags: >-
-          --service-account=${{ secrets.WIF_SERVICE_ACCOUNT }}
-          --set-env-vars=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
+          --region=us-central1
+          --project=av-8675309
+          --platform=managed
+          --allow-unauthenticated
+          --port=8080
+          --memory=2Gi
+          --cpu=1
+          --min-instances=0
+          --max-instances=10
+          --set-env-vars=GOOGLE_CLOUD_PROJECT=av-8675309,YOUTUBE_ENABLED=true,YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }},YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }},YOUTUBE_PROJECT_ID=${{ secrets.YOUTUBE_PROJECT_ID }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
 
     - name: Show Output
       run: echo ${{ steps.deploy.outputs.url }}

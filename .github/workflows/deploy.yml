@@ -9,7 +9,7 @@ env:
   PROJECT_ID: av-8675309
   SERVICE_NAME: av-app
   REGION: us-central1
-  WORKLOAD_IDENTITY_PROVIDER: projects/av-8675309/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+  WORKLOAD_IDENTITY_PROVIDER: projects/av-8675309/locations/global/workloadIdentityPools/github-pool/providers/github-provider
   SERVICE_ACCOUNT: github-actions@av-8675309.iam.gserviceaccount.com
 
 jobs:

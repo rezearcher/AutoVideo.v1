@@ -23,7 +23,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run API tests
-      run: python test_api.py
+      run: python AI-Auto-Video-Generator/test_api.py
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}

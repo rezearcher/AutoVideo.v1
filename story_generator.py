@@ -1,6 +1,6 @@
 import os
 import logging
-import openai
+from openai import OpenAI
 from dotenv import load_dotenv
 from datetime import datetime
 import time
@@ -33,9 +33,7 @@ def generate_story(prompt, timeout=60):
             
         try:
             # Initialize OpenAI client
-            client = openai.OpenAI(
-                api_key=os.getenv('OPENAI_API_KEY')
-            )
+            client = OpenAI()  # Will use OPENAI_API_KEY from environment
             
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",

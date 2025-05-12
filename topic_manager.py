@@ -9,7 +9,9 @@ import openai
 load_dotenv()
 
 # Initialize OpenAI client
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = openai.OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 
 class TopicManager:
     def __init__(self, topics_file="topics.json", max_topics=10, update_interval_days=7):

@@ -10,7 +10,9 @@ load_dotenv()
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
 # Initialize OpenAI client
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = openai.OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 
 def generate_image(prompt, output_path):
     """

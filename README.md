@@ -404,6 +404,39 @@ Required GCP setup:
 2. Create service account with necessary permissions
 3. Configure GitHub Actions secrets
 
+## Secret Management
+
+### GitHub Actions Secrets
+The application uses GitHub Actions secrets for secure deployment. Required secrets:
+
+```yaml
+# GitHub Actions Secrets
+OPENAI_API_KEY: OpenAI API key for story generation
+ELEVENLABS_API_KEY: ElevenLabs API key for voice synthesis
+WIF_PROVIDER: Google Cloud Workload Identity Provider
+WIF_SERVICE_ACCOUNT: Google Cloud Service Account for deployment
+```
+
+### Cloud Run Environment Variables
+The application uses environment variables in Cloud Run for runtime configuration:
+
+```yaml
+# Cloud Run Environment Variables
+OPENAI_API_KEY: Set from GitHub Actions secret
+ELEVENLABS_API_KEY: Set from GitHub Actions secret
+YOUTUBE_ENABLED: true/false to control YouTube upload feature
+GOOGLE_CLOUD_PROJECT: Project ID for Google Cloud services
+```
+
+### Important Notes
+1. Never store secrets in files or commit them to the repository
+2. Use GitHub Actions secrets for deployment-time configuration
+3. Use Cloud Run environment variables for runtime configuration
+4. The service account must have the following roles:
+   - Cloud Run Admin
+   - Service Account User
+   - Storage Admin
+
 ---
 
 # 📈 **Future Enhancements (V2+)**

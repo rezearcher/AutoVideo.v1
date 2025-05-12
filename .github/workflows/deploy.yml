@@ -57,6 +57,7 @@ jobs:
         project_id: ${{ env.PROJECT_ID }}
         flags: >-
           --service-account=${{ secrets.WIF_SERVICE_ACCOUNT }}
+          --clear-env-vars
           --set-env-vars=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
 
     - name: Show Output

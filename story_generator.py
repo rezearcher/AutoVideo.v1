@@ -35,7 +35,7 @@ def generate_story(prompt, timeout=60):
             # Initialize OpenAI client
             client = OpenAI(
                 api_key=os.getenv('OPENAI_API_KEY'),
-                base_url="https://api.openai.com/v1"
+                organization=os.getenv('OPENAI_ORG_ID')
             )
             
             response = client.chat.completions.create(

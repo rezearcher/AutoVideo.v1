@@ -14,3 +14,9 @@ secrets/
 youtube_uploader/token.pickle
 *.json
 *.pickle
+
+# Architecture and Documentation
+architecture.md
+cloud-storage-config.yaml
+*.md
+!README.md

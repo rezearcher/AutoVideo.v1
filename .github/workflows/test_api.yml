@@ -23,7 +23,15 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run API tests
-      run: python AI-Auto-Video-Generator/test_api.py
+      run: |
+        if [ -f "test_api.py" ]; then
+          python test_api.py
+        elif [ -f "AI-Auto-Video-Generator/test_api.py" ]; then
+          python AI-Auto-Video-Generator/test_api.py
+        else
+          echo "Error: test_api.py not found"
+          exit 1
+        fi
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}

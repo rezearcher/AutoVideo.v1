@@ -20,3 +20,4 @@ architecture.md
 cloud-storage-config.yaml
 *.md
 !README.md
+!docs/*.md

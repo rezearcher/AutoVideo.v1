@@ -25,6 +25,7 @@ is_initialized = False
 last_generation_time = None
 last_generation_status = None
 timing_metrics = TimingMetrics()
+topic_manager = None
 
 def initialize_app():
     """Initialize the application and check required environment variables."""
@@ -68,7 +69,7 @@ def status():
 
 def generate_video_thread():
     """Background thread for video generation."""
-    global is_generating, last_generation_status
+    global is_generating, last_generation_status, topic_manager
     
     try:
         is_generating = True
@@ -81,7 +82,8 @@ def generate_video_thread():
         os.makedirs(output_dir, exist_ok=True)
         
         # Initialize topic manager and get next topic
-        topic_manager = TopicManager()
+        if topic_manager is None:
+            topic_manager = TopicManager()
         story_prompt = topic_manager.get_next_topic()
         
         # Generate content

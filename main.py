@@ -71,6 +71,24 @@ def status():
         "timing_metrics": timing_metrics.get_metrics()
     })
 
+@app.route('/generate', methods=['POST'])
+def start_generation():
+    """Start the video generation process."""
+    global is_generating
+    
+    if is_generating:
+        return jsonify({"error": "Video generation already in progress"}), 409
+    
+    if not is_initialized:
+        return jsonify({"error": "Application not properly initialized"}), 500
+    
+    # Start video generation in a background thread
+    thread = threading.Thread(target=generate_video_thread)
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({"message": "Video generation started"})
+
 def generate_video_thread():
     """Background thread for video generation."""
     global is_generating, last_generation_status, topic_manager
@@ -149,10 +167,6 @@ def generate_video_thread():
 # Initialize the application
 try:
     is_initialized = initialize_app()
-    # Start video generation in a background thread
-    thread = threading.Thread(target=generate_video_thread)
-    thread.daemon = True
-    thread.start()
 except Exception as e:
     logger.error(f"Failed to initialize application: {str(e)}")
     is_initialized = False

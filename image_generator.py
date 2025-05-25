@@ -27,6 +27,8 @@ def generate_image(prompt, output_path):
         str: Path to the saved image
     """
     try:
+        logging.info(f"API Key: {os.getenv('OPENAI_API_KEY')[:5]}...{os.getenv('OPENAI_API_KEY')[-5:]}")
+        logging.info(f"Organization ID: {os.getenv('OPENAI_ORG_ID')[:5]}...{os.getenv('OPENAI_ORG_ID')[-5:]}")
         response = client.images.generate(
             prompt=prompt,
             n=1,

@@ -14,6 +14,9 @@ client = OpenAI(
     organization=os.getenv('OPENAI_ORG_ID')
 )
 
+logging.info(f"API Key: {os.getenv('OPENAI_API_KEY')[:5]}...{os.getenv('OPENAI_API_KEY')[-5:]}")
+logging.info(f"Organization ID: {os.getenv('OPENAI_ORG_ID')[:5]}...{os.getenv('OPENAI_ORG_ID')[-5:]}")
+
 def generate_story(prompt, timeout=60):
     """
     Generate a story from a prompt with a timeout.

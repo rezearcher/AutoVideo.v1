@@ -7,10 +7,14 @@ from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.exceptions import RefreshError
+from dotenv import load_dotenv
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
 
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
@@ -23,6 +27,21 @@ class TokenManager:
             'refresh_count': 0,
             'last_error': None
         }
+        
+        # Load credentials from environment
+        self.client_id = os.getenv('YOUTUBE_CLIENT_ID')
+        self.client_secret = os.getenv('YOUTUBE_CLIENT_SECRET')
+        self.project_id = os.getenv('YOUTUBE_PROJECT_ID')
+        
+        if not all([self.client_id, self.client_secret, self.project_id]):
+            logger.error("Missing required YouTube credentials in environment variables")
+            raise ValueError("Missing required YouTube credentials")
+
+        # Check for token.pickle
+        self.token_path = os.path.join(os.path.dirname(__file__), 'token.pickle')
+        if not os.path.exists(self.token_path):
+            logger.error("token.pickle missing: YouTube upload cannot proceed. Please generate and provide this file.")
+            raise FileNotFoundError("token.pickle missing: YouTube upload cannot proceed. Please generate and provide this file.")
 
     def _should_refresh_token(self):
         """Determine if token should be refreshed based on Google's guidelines."""
@@ -48,31 +67,37 @@ class TokenManager:
     def get_credentials(self):
         """Get valid credentials for YouTube API."""
         try:
-            # Get credentials from environment variables
-            client_id = os.getenv('YOUTUBE_CLIENT_ID')
-            client_secret = os.getenv('YOUTUBE_CLIENT_SECRET')
-            project_id = os.getenv('YOUTUBE_PROJECT_ID')
-
-            if not all([client_id, client_secret, project_id]):
-                raise ValueError("Missing required YouTube credentials in environment variables")
-
             # Create credentials object from environment variables
             self.credentials = Credentials(
                 None,  # No token initially
                 refresh_token=None,
                 token_uri="https://oauth2.googleapis.com/token",
-                client_id=client_id,
-                client_secret=client_secret,
+                client_id=self.client_id,
+                client_secret=self.client_secret,
                 scopes=SCOPES
             )
 
             # Check if we need to refresh the token
             if self._should_refresh_token():
                 try:
-                    self.credentials.refresh(Request())
+                    # Initialize OAuth flow
+                    flow = InstalledAppFlow.from_client_config(
+                        {
+                            "web": {
+                                "client_id": self.client_id,
+                                "client_secret": self.client_secret,
+                                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                                "token_uri": "https://oauth2.googleapis.com/token"
+                            }
+                        },
+                        SCOPES
+                    )
+                    
+                    # Get credentials from flow
+                    self.credentials = flow.run_local_server(port=0)
                     self.token_info['refresh_count'] += 1
                     self.token_info['last_error'] = None
-                except RefreshError as e:
+                except Exception as e:
                     logger.warning(f"Token refresh failed: {e}")
                     self.token_info['last_error'] = str(e)
                     self.credentials = None

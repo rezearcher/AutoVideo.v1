@@ -1,4 +1,4 @@
-import openai
+from openai import OpenAI
 import os
 import requests
 from datetime import datetime
@@ -10,7 +10,7 @@ load_dotenv()
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
 # Initialize OpenAI client globally
-client = openai.OpenAI(
+client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     organization=os.getenv("OPENAI_ORG_ID")
 )

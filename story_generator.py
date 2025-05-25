@@ -4,10 +4,15 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from datetime import datetime
 import time
-import sys
 
 # Load environment variables
 load_dotenv()
+
+# Initialize OpenAI client globally
+client = OpenAI(
+    api_key=os.getenv('OPENAI_API_KEY'),
+    organization=os.getenv('OPENAI_ORG_ID')
+)
 
 def generate_story(prompt, timeout=60):
     """
@@ -32,12 +37,6 @@ def generate_story(prompt, timeout=60):
             raise Exception("Story generation timed out")
             
         try:
-            # Initialize OpenAI client
-            client = OpenAI(
-                api_key=os.getenv('OPENAI_API_KEY'),
-                organization=os.getenv('OPENAI_ORG_ID')
-            )
-            
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -58,7 +57,7 @@ def generate_story(prompt, timeout=60):
                 logging.error(f"Failed to generate story after {max_retries} attempts: {str(e)}")
                 raise Exception(f"Failed to generate story after {max_retries} attempts: {str(e)}")
             logging.warning(f"Retry {retry_count}/{max_retries} after error: {str(e)}")
-            time.sleep(1)  # Wait before retrying
+            time.sleep(1)  # Simple retry delay
 
 def extract_image_prompts(story, num_scenes=5):
     """Extract image prompts from the story."""
@@ -113,10 +112,4 @@ def save_story_with_image_prompts(story, prompt, image_prompts, output_dir="outp
     
     logging.info(f"Story and image prompts saved to: {file_path}")
     return file_path
-
-def save_story(story):
-    file_path = f"story_{timestamp}.txt"
-    with open(file_path, "w") as f:
-        f.write(story)
-    return file_path  # Return the file path where the story is saved
 

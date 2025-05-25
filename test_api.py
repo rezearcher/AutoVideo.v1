@@ -1,24 +1,7 @@
 import os
 import sys
 import requests
-from openai import OpenAI
 from elevenlabs import generate, set_api_key
-
-def test_openai():
-    try:
-        client = OpenAI(
-            api_key=os.getenv('OPENAI_API_KEY')
-        )
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": "Hello"}],
-            max_tokens=5
-        )
-        print("✅ OpenAI API test passed")
-        return True
-    except Exception as e:
-        print(f"❌ OpenAI API test failed: {str(e)}")
-        return False
 
 def test_elevenlabs():
     try:
@@ -55,7 +38,6 @@ def main():
     print("Starting API connectivity tests...")
     
     tests = [
-        ("OpenAI", test_openai),
         ("ElevenLabs", test_elevenlabs),
         ("YouTube", test_youtube)
     ]

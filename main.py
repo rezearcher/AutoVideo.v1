@@ -167,6 +167,10 @@ def generate_video_thread():
 # Initialize the application
 try:
     is_initialized = initialize_app()
+    # Start video generation in a background thread
+    thread = threading.Thread(target=generate_video_thread)
+    thread.daemon = True
+    thread.start()
 except Exception as e:
     logger.error(f"Failed to initialize application: {str(e)}")
     is_initialized = False

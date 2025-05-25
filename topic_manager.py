@@ -3,13 +3,13 @@ import random
 import os
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-import openai
+from openai import OpenAI
 
 # Load environment variables
 load_dotenv()
 
 # Initialize OpenAI client
-client = openai.OpenAI(
+client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
 

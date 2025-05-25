@@ -31,25 +31,29 @@ def initialize_app():
     """Initialize the application and check required environment variables."""
     logger.info("Starting application initialization...")
     
-    # Create necessary directories
-    logger.info("Creating application directories...")
-    os.makedirs('output', exist_ok=True)
-    os.makedirs('secrets', exist_ok=True)
-    os.makedirs('fonts', exist_ok=True)
-    logger.info("Application directories created successfully")
-    
-    # Check required environment variables
-    logger.info("Checking environment variables...")
-    required_vars = ['GOOGLE_CLOUD_PROJECT']
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
-    if missing_vars:
-        error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
-        logger.error(f"Error initializing application: {error_msg}")
-        raise ValueError(error_msg)
-    
-    logger.info("Application initialized successfully")
-    return True
+    try:
+        # Create necessary directories
+        logger.info("Creating application directories...")
+        os.makedirs('output', exist_ok=True)
+        os.makedirs('secrets', exist_ok=True)
+        os.makedirs('fonts', exist_ok=True)
+        logger.info("Application directories created successfully")
+        
+        # Check required environment variables
+        logger.info("Checking environment variables...")
+        required_vars = ['GOOGLE_CLOUD_PROJECT']
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        
+        if missing_vars:
+            error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
+            logger.error(f"Error initializing application: {error_msg}")
+            raise ValueError(error_msg)
+        
+        logger.info("Application initialized successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to initialize application: {str(e)}", exc_info=True)
+        raise
 
 @app.route('/health')
 def health_check():

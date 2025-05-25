@@ -6,7 +6,10 @@ from elevenlabs import generate, set_api_key
 
 def test_openai():
     try:
-        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        client = OpenAI(
+            api_key=os.getenv('OPENAI_API_KEY'),
+            organization=os.getenv('OPENAI_ORG_ID')
+        )
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "Hello"}],

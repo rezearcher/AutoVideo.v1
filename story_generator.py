@@ -8,7 +8,7 @@ import time
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client globally
+# Initialize OpenAI client without 'proxies' parameter
 client = OpenAI(
     api_key=os.getenv('OPENAI_API_KEY'),
     organization=os.getenv('OPENAI_ORG_ID')

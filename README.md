@@ -58,7 +58,6 @@ The application consists of two main components:
 
 ```bash
 OPENAI_API_KEY=your_openai_key
-OPENAI_ORG_ID=your_org_id
 ELAI_API_KEY=your_elai_key
 DID_API_KEY=your_did_key
 IMGUR_CLIENT_ID=your_imgur_client_id

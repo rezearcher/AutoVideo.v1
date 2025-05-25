@@ -1,4 +1,4 @@
-import openai  # Using openai package version 0.28.0
+import openai
 import os
 import requests
 from datetime import datetime
@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
-# Initialize OpenAI client
+# Initialize OpenAI client globally
 client = openai.OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
@@ -51,25 +51,28 @@ def generate_image(prompt, output_path):
 
 def generate_images(prompts, output_dir):
     """
-    Generate images from a list of prompts and save them to the specified directory.
+    Generate multiple images from a list of prompts.
     
     Args:
         prompts (list): List of image prompts
-        output_dir (str): Directory where the images should be saved
+        output_dir (str): Directory to save the images in
         
     Returns:
-        list: List of paths to the saved images
+        list: List of paths to the generated images
     """
-    try:
-        image_paths = []
-        for prompt in prompts:
-            output_path = os.path.join(output_dir, f"image_{len(image_paths)}.png")
+    os.makedirs(output_dir, exist_ok=True)
+    image_paths = []
+    
+    for idx, prompt in enumerate(prompts, start=1):
+        output_path = os.path.join(output_dir, f"image_{idx}.png")
+        try:
             image_path = generate_image(prompt, output_path)
             image_paths.append(image_path)
-        return image_paths
-    except Exception as e:
-        logging.error(f"Error generating images: {str(e)}")
-        raise
+        except Exception as e:
+            logging.error(f"Failed to generate image {idx}: {str(e)}")
+            continue
+            
+    return image_paths
 
 def download_image(url, filename):
     """Download an image from a URL and save it to a file."""

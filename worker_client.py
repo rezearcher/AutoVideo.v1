@@ -21,7 +21,7 @@ class WorkerClient:
             await self.session.close()
 
     @staticmethod
-    async def create_worker(project_id: str) -> Optional[str]:
+    def create_worker(project_id: str) -> Optional[str]:
         """Create a new GPU worker instance."""
         try:
             # Deploy worker using gcloud
@@ -55,11 +55,10 @@ class WorkerClient:
             logger.error(f"Error creating worker: {e}")
             return None
 
-    async def process_video(self, image_paths: List[str], output_path: str, audio_path: str) -> bool:
+    def process_video(self, image_paths: List[str], output_path: str, audio_path: str) -> bool:
         """Process video using the GPU worker."""
-        if not self.session:
-            self.session = aiohttp.ClientSession()
-            
+        import requests
+        
         try:
             # Prepare job data
             job_data = {
@@ -69,18 +68,14 @@ class WorkerClient:
             }
             
             # Send job to worker
-            async with self.session.post(f"{self.worker_url}/process", json=job_data) as response:
-                if response.status != 200:
-                    logger.error(f"Worker returned status {response.status}")
-                    return False
-                    
-                result = await response.json()
-                return result.get("status") == "completed"
+            response = requests.post(f"{self.worker_url}/process", json=job_data)
+            if response.status_code != 200:
+                logger.error(f"Worker returned status {response.status_code}")
+                return False
+                
+            result = response.json()
+            return result.get("status") == "completed"
                 
         except Exception as e:
             logger.error(f"Error processing video: {e}")
-            return False
-        finally:
-            if self.session:
-                await self.session.close()
-                self.session = None 
+            return False 

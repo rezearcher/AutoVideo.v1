@@ -25,19 +25,6 @@ def get_openai_client():
         )
     return client
 
-# Safe logging of environment variables
-api_key = os.getenv('OPENAI_API_KEY')
-org_id = os.getenv('OPENAI_ORG_ID')
-
-if api_key:
-    logging.info(f"API Key: {api_key[:5]}...{api_key[-5:]}")
-else:
-    logging.warning("OPENAI_API_KEY not set")
-
-if org_id:
-    logging.info(f"Organization ID: {org_id[:5]}...{org_id[-5:]}")
-else:
-    logging.warning("OPENAI_ORG_ID not set")
 
 def generate_story(prompt, timeout=60):
     """

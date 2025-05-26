@@ -41,19 +41,17 @@ def initialize_app():
         
         # Check required environment variables
         logger.info("Checking environment variables...")
-        required_vars = ['GOOGLE_CLOUD_PROJECT']
-        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
         
-        if missing_vars:
-            error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
-            logger.error(f"Error initializing application: {error_msg}")
-            raise ValueError(error_msg)
+        if not project_id:
+            logger.warning("GOOGLE_CLOUD_PROJECT environment variable not set. Some features may not work.")
+            return False
         
-        logger.info("Application initialized successfully")
+        logger.info(f"Application initialized successfully with project: {project_id}")
         return True
     except Exception as e:
         logger.error(f"Failed to initialize application: {str(e)}", exc_info=True)
-        raise
+        return False
 
 @app.route('/health')
 def health_check():
@@ -167,6 +165,7 @@ def generate_video_thread():
 # Initialize the application
 try:
     is_initialized = initialize_app()
+    logger.info(f"Application initialization result: {is_initialized}")
 except Exception as e:
     logger.error(f"Failed to initialize application: {str(e)}")
     is_initialized = False

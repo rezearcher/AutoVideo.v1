@@ -22,37 +22,29 @@ class WorkerClient:
 
     @staticmethod
     def create_worker(project_id: str) -> Optional[str]:
-        """Create a new GPU worker instance."""
+        """Get the existing GPU worker URL."""
         try:
-            # Deploy worker using gcloud
-            cmd = [
-                "gcloud", "run", "deploy", "gpu-worker",
-                "--image", f"us-central1-docker.pkg.dev/{project_id}/av-app/gpu-worker:latest",
-                "--platform", "managed",
-                "--region", "us-central1",
-                "--allow-unauthenticated",
-                "--memory", "4Gi",
-                "--cpu", "2",
-                "--min-instances", "0",
-                "--max-instances", "1",
-                "--port", "8080"
-            ]
+            # Use the existing av-gpu-worker service with the correct URL format
+            worker_url = "https://av-gpu-worker-u6sfbxnveq-uc.a.run.app"
             
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                logger.error(f"Failed to create worker: {result.stderr}")
-                return None
+            # Test if the worker is accessible
+            import requests
+            try:
+                response = requests.get(f"{worker_url}/health", timeout=10)
+                if response.status_code == 200:
+                    logger.info(f"GPU worker is healthy at {worker_url}")
+                    return worker_url
+                else:
+                    logger.warning(f"GPU worker health check failed with status {response.status_code}")
+                    # Still return the URL as it might be temporarily unavailable
+                    return worker_url
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"GPU worker health check failed: {e}")
+                # Still return the URL as it might be temporarily unavailable
+                return worker_url
                 
-            # Extract service URL from output
-            for line in result.stdout.split('\n'):
-                if "Service URL:" in line:
-                    return line.split("Service URL:")[1].strip()
-                    
-            logger.error("Could not find service URL in deployment output")
-            return None
-            
         except Exception as e:
-            logger.error(f"Error creating worker: {e}")
+            logger.error(f"Error getting worker URL: {e}")
             return None
 
     def process_video(self, image_paths: List[str], output_path: str, audio_path: str) -> bool:

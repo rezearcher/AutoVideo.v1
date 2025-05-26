@@ -5,6 +5,7 @@ from worker_client import WorkerClient
 from story_generator import generate_story, extract_image_prompts
 from image_generator import generate_images
 from voiceover_generator import generate_voiceover
+from video_creator import create_video
 from youtube_uploader import upload_video
 from datetime import datetime
 import threading
@@ -261,29 +262,14 @@ def generate_video_thread():
         timing_metrics.end_phase()
         send_custom_metric("phase_duration", phase_duration, {"phase": "voiceover_generation"})
         
-        # Create worker
-        timing_metrics.start_phase("worker_creation")
+        # Create video using video_creator
+        timing_metrics.start_phase("video_creation")
         phase_start = time.time()
-        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-        worker_url = WorkerClient.create_worker(project_id)
-        if not worker_url:
-            raise Exception("Failed to create GPU worker")
-        phase_duration = time.time() - phase_start
-        timing_metrics.end_phase()
-        send_custom_metric("phase_duration", phase_duration, {"phase": "worker_creation"})
-        
-        # Process video using worker
-        timing_metrics.start_phase("video_processing")
-        phase_start = time.time()
-        worker = WorkerClient(worker_url)
         output_path = f"{output_dir}/final_video.mp4"
-        success = worker.process_video(image_paths, output_path, audio_path)
+        video_path = create_video(image_paths, audio_path, story, timestamp, output_path)
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()
-        send_custom_metric("phase_duration", phase_duration, {"phase": "video_processing"})
-        
-        if not success:
-            raise Exception("Video processing failed")
+        send_custom_metric("phase_duration", phase_duration, {"phase": "video_creation"})
         
         # Upload to YouTube
         timing_metrics.start_phase("youtube_upload")
@@ -294,7 +280,7 @@ def generate_video_thread():
         description = story_lines[1].replace('Description: ', '')
         # Add the full story as additional context
         description += "\n\nFull Story:\n" + "\n".join(story_lines[2:])
-        upload_video(output_path, title, description)
+        upload_video(video_path, title, description)
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()
         send_custom_metric("phase_duration", phase_duration, {"phase": "youtube_upload"})

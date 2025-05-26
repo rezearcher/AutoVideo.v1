@@ -14,7 +14,7 @@ google-auth-httplib2==0.1.0
 google-api-python-client==2.108.0
 google-cloud-monitoring==2.15.1
 google-cloud-logging==3.8.0
-google-cloud-error-reporting==1.9.3
+google-cloud-error-reporting==1.11.1
 aiohttp>=3.11.0
 decorator>=4.0.2
 imageio>=2.5

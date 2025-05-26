@@ -331,6 +331,17 @@ except Exception as e:
 # Expose the WSGI application for Gunicorn
 application = app
 
+# ASGI wrapper for uvicorn
+try:
+    from asgiref.wsgi import WsgiToAsgi
+    asgi_app = WsgiToAsgi(app)
+    # For uvicorn compatibility
+    application = asgi_app
+except ImportError:
+    # Fallback to WSGI if asgiref not available
+    logger.warning("asgiref not available, using WSGI mode")
+    application = app
+
 # For development/testing
 if __name__ == "__main__":
     # Start Flask server

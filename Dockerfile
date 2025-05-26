@@ -70,4 +70,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 EXPOSE ${PORT}
 
 # Start with Gunicorn for stable HTTP handling
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--timeout", "120", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "main:application"] 
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--worker-class", "gthread", "--timeout", "120", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "--forwarded-allow-ips", "*", "--proxy-allow-from", "*", "main:application"] 

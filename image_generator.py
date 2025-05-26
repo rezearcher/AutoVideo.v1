@@ -9,12 +9,22 @@ from dotenv import load_dotenv
 load_dotenv()
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
-# Initialize OpenAI client globally
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    organization=os.getenv("OPENAI_ORG_ID"),
-    base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
-)
+# Global client variable for lazy initialization
+client = None
+
+def get_openai_client():
+    """Get or initialize the OpenAI client."""
+    global client
+    if client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is not set")
+        client = OpenAI(
+            api_key=api_key,
+            organization=os.getenv("OPENAI_ORG_ID"),
+            base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
+        )
+    return client
 
 def generate_image(prompt, output_path):
     """
@@ -28,6 +38,7 @@ def generate_image(prompt, output_path):
         str: Path to the saved image
     """
     try:
+        client = get_openai_client()
         logging.info(f"API Key: {os.getenv('OPENAI_API_KEY')[:5]}...{os.getenv('OPENAI_API_KEY')[-5:]}")
         logging.info(f"Organization ID: {os.getenv('OPENAI_ORG_ID')[:5]}...{os.getenv('OPENAI_ORG_ID')[-5:]}")
         response = client.images.generate(

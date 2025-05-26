@@ -8,12 +8,22 @@ import time
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client
-client = OpenAI(
-    api_key=os.getenv('OPENAI_API_KEY'),
-    organization=os.getenv('OPENAI_ORG_ID'),
-    base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
-)
+# Global client variable for lazy initialization
+client = None
+
+def get_openai_client():
+    """Get or initialize the OpenAI client."""
+    global client
+    if client is None:
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is not set")
+        client = OpenAI(
+            api_key=api_key,
+            organization=os.getenv('OPENAI_ORG_ID'),
+            base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
+        )
+    return client
 
 # Safe logging of environment variables
 api_key = os.getenv('OPENAI_API_KEY')
@@ -52,6 +62,7 @@ def generate_story(prompt, timeout=60):
             raise Exception("Story generation timed out")
             
         try:
+            client = get_openai_client()
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -85,6 +96,7 @@ def extract_image_prompts(story, num_scenes=5):
         Story: {story}
         """
         
+        client = get_openai_client()
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[

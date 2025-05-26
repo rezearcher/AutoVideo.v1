@@ -54,6 +54,58 @@ The application consists of two main components:
   - YouTube API credentials
   - Google Cloud Project
 
+### Google Cloud Platform Setup
+
+**⚠️ Important: You must enable several GCP APIs and configure permissions before deployment.**
+
+#### Quick Setup (Recommended)
+
+Run the automated setup script:
+
+```bash
+# Set your GCP project
+gcloud config set project YOUR_PROJECT_ID
+
+# Run the setup script
+./scripts/setup_gcp.sh
+```
+
+This script will:
+- ✅ Enable all required Google Cloud APIs
+- ✅ Create a service account with proper permissions
+- ✅ Generate authentication keys
+- ✅ Verify the setup
+
+#### Manual Setup
+
+If you prefer manual setup, see the detailed guide: [`docs/gcp-setup.md`](docs/gcp-setup.md)
+
+#### Required GCP APIs
+
+The following APIs must be enabled:
+- **Cloud Build** (`cloudbuild.googleapis.com`)
+- **Cloud Run** (`run.googleapis.com`) 
+- **Container Registry** (`containerregistry.googleapis.com`)
+- **Cloud Monitoring** (`monitoring.googleapis.com`)
+- **Cloud Logging** (`logging.googleapis.com`)
+- **Cloud Resource Manager** (`cloudresourcemanager.googleapis.com`)
+- **Service Usage** (`serviceusage.googleapis.com`)
+- **Identity & Access Management** (`iam.googleapis.com`)
+
+#### Required GitHub Secrets
+
+After running the setup script, add these secrets to your GitHub repository:
+
+| Secret Name | Description |
+|-------------|-------------|
+| `GOOGLE_CLOUD_PROJECT_ID` | Your GCP Project ID |
+| `GOOGLE_CLOUD_SA_KEY` | Service account key (JSON) |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `ELEVENLABS_API_KEY` | ElevenLabs API key |
+| `YOUTUBE_CLIENT_ID` | YouTube API client ID |
+| `YOUTUBE_CLIENT_SECRET` | YouTube API client secret |
+| `YOUTUBE_PROJECT_ID` | YouTube API project ID |
+
 ### Environment Variables
 
 ```bash
@@ -543,3 +595,188 @@ MIT License (free to use, modify, distribute — with attribution if public.)
 
 # Testing GitHub Actions
 # Force deployment
+
+## 📊 Google Cloud Monitoring
+
+AutoVideo includes comprehensive Google Cloud monitoring with real-time metrics, alerting, and observability features.
+
+### Monitoring Features
+
+#### 🔍 **Custom Metrics**
+- **Pipeline Tracking**: Monitor video generation pipeline start, completion, and duration
+- **Phase Monitoring**: Track individual phases (story generation, image creation, voiceover, video processing)
+- **Resource Metrics**: Monitor image generation count, prompt extraction, and processing times
+- **Health Checks**: Continuous health monitoring with status reporting
+
+#### 🚨 **Alerting Policies**
+- **High Error Rate**: Alerts when error rate exceeds 5%
+- **Pipeline Failures**: Notifications for pipeline failure rate > 10%
+- **Long Pipeline Duration**: Alerts for pipelines taking > 30 minutes
+- **Service Health**: Immediate alerts for service downtime
+- **Resource Usage**: CPU and memory utilization alerts at 80% threshold
+
+#### 📈 **Dashboards**
+- **Operations Dashboard**: Real-time view of pipeline performance
+- **Error Tracking**: Comprehensive error rate and failure analysis
+- **Resource Monitoring**: CPU, memory, and instance count tracking
+- **Performance Metrics**: Request volume and response time analysis
+
+#### 📧 **Notification Channels**
+- **Email Alerts**: Configurable email notifications
+- **Slack Integration**: Real-time Slack notifications (optional)
+- **Custom Webhooks**: Support for custom notification endpoints
+
+### Automatic Monitoring Setup
+
+Monitoring is automatically configured during deployment:
+
+```mermaid
+graph TD
+    A[Code Push to Main] --> B[GitHub Actions Triggered]
+    B --> C[Deploy Application]
+    C --> D[Setup Monitoring]
+    D --> E[Create Custom Metrics]
+    E --> F[Configure Alert Policies]
+    F --> G[Setup Notification Channels]
+    G --> H[Create Dashboards]
+    H --> I[Monitoring Active]
+```
+
+### Manual Monitoring Setup
+
+To manually set up or update monitoring:
+
+1. **Configure Project ID**:
+   ```bash
+   export PROJECT_ID="your-gcp-project-id"
+   ```
+
+2. **Install Dependencies**:
+   ```bash
+   pip install google-cloud-monitoring google-cloud-logging google-cloud-error-reporting pyyaml
+   ```
+
+3. **Run Setup Script**:
+   ```bash
+   python scripts/setup_monitoring.py --project-id $PROJECT_ID
+   ```
+
+4. **Trigger via GitHub Actions**:
+   - Go to Actions tab in GitHub
+   - Select "Setup Google Cloud Monitoring"
+   - Click "Run workflow"
+
+### Monitoring Configuration
+
+The monitoring setup is defined in `monitoring-config.yaml`:
+
+```yaml
+# Key monitoring thresholds
+alerting_policies:
+  - Error rate threshold: 5%
+  - Pipeline failure threshold: 10%
+  - Pipeline duration threshold: 30 minutes
+  - CPU utilization threshold: 80%
+  - Memory utilization threshold: 80%
+
+# Custom metrics tracked
+custom_metrics:
+  - autovideo/pipeline_started
+  - autovideo/pipeline_completed
+  - autovideo/pipeline_duration
+  - autovideo/phase_duration
+  - autovideo/generation_request
+  - autovideo/images_generated
+  - autovideo/health_check
+```
+
+### Accessing Monitoring Data
+
+#### **Google Cloud Console**
+1. Navigate to [Google Cloud Monitoring](https://console.cloud.google.com/monitoring)
+2. View the "AutoVideo Operations Dashboard"
+3. Check alert policies and notification channels
+4. Review custom metrics and logs
+
+#### **Programmatic Access**
+```python
+from google.cloud import monitoring_v3
+
+client = monitoring_v3.MetricServiceClient()
+project_name = f"projects/{project_id}"
+
+# List custom metrics
+metrics = client.list_metric_descriptors(name=project_name)
+for metric in metrics:
+    if "autovideo" in metric.type:
+        print(f"Metric: {metric.type}")
+```
+
+### Key Metrics Explained
+
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| `pipeline_duration` | Total time for video generation | > 30 minutes |
+| `pipeline_completed` | Pipeline success/failure status | > 10% failure rate |
+| `phase_duration` | Individual phase timing | Tracked for optimization |
+| `generation_request` | Incoming generation requests | Rate monitoring |
+| `health_check` | Service health status | Any unhealthy status |
+| `images_generated` | Images created per pipeline | Performance tracking |
+
+### Troubleshooting Monitoring
+
+#### **Common Issues**
+
+1. **Missing Metrics**:
+   ```bash
+   # Check if custom metrics are created
+   gcloud logging metrics list | grep autovideo
+   ```
+
+2. **Alert Policy Errors**:
+   ```bash
+   # List alert policies
+   gcloud alpha monitoring policies list --filter="displayName:AutoVideo"
+   ```
+
+3. **Permission Issues**:
+   - Ensure service account has `Monitoring Admin` role
+   - Verify `GOOGLE_CLOUD_SA_KEY` secret is configured
+
+#### **Monitoring Health Check**
+```bash
+# Test monitoring endpoint
+curl https://your-app-url.run.app/health
+
+# Expected response
+{
+  "status": "healthy",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "monitoring": "active"
+}
+```
+
+### SLO (Service Level Objectives)
+
+AutoVideo maintains the following SLOs:
+
+- **Availability**: 99.5% uptime (30-day rolling window)
+- **Pipeline Success Rate**: 95% (7-day rolling window)
+- **Response Time**: < 5 seconds for API endpoints
+- **Error Rate**: < 5% for all requests
+
+### Monitoring Best Practices
+
+1. **Regular Review**: Check dashboards weekly for performance trends
+2. **Alert Tuning**: Adjust thresholds based on actual usage patterns
+3. **Log Analysis**: Use structured logging for better debugging
+4. **Capacity Planning**: Monitor resource usage for scaling decisions
+5. **Incident Response**: Set up escalation procedures for critical alerts
+
+### Future Monitoring Enhancements
+
+- **Custom Dashboards**: Application-specific monitoring views
+- **Predictive Alerting**: ML-based anomaly detection
+- **Cost Monitoring**: Track GCP resource costs and optimization
+- **User Experience Monitoring**: End-to-end user journey tracking
+- **Integration Monitoring**: Third-party API performance tracking

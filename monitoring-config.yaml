@@ -1,0 +1,261 @@
+# Google Cloud Monitoring Configuration for AutoVideo
+# This file defines monitoring policies, alerts, and dashboards
+
+# Notification Channels
+notification_channels:
+  - name: "autovideo-email-alerts"
+    type: "email"
+    labels:
+      email_address: "your-email@example.com"
+    description: "Email notifications for AutoVideo alerts"
+
+  - name: "autovideo-slack-alerts"
+    type: "slack"
+    labels:
+      channel_name: "#autovideo-alerts"
+      url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+    description: "Slack notifications for AutoVideo alerts"
+
+# Alerting Policies
+alerting_policies:
+  - name: "AutoVideo - High Error Rate"
+    display_name: "AutoVideo High Error Rate"
+    documentation:
+      content: "AutoVideo application is experiencing a high error rate"
+      mime_type: "text/markdown"
+    conditions:
+      - display_name: "Error rate > 5%"
+        condition_threshold:
+          filter: 'resource.type="cloud_run_revision" AND resource.labels.service_name="av-app"'
+          comparison: "COMPARISON_GREATER_THAN"
+          threshold_value: 0.05
+          duration: "300s"
+          aggregations:
+            - alignment_period: "60s"
+              per_series_aligner: "ALIGN_RATE"
+              cross_series_reducer: "REDUCE_MEAN"
+              group_by_fields:
+                - "resource.labels.service_name"
+
+  - name: "AutoVideo - Pipeline Failures"
+    display_name: "AutoVideo Pipeline Failures"
+    documentation:
+      content: "AutoVideo video generation pipeline is failing"
+      mime_type: "text/markdown"
+    conditions:
+      - display_name: "Pipeline failure rate > 10%"
+        condition_threshold:
+          filter: 'metric.type="custom.googleapis.com/autovideo/pipeline_completed" AND metric.labels.status="error"'
+          comparison: "COMPARISON_GREATER_THAN"
+          threshold_value: 0.1
+          duration: "300s"
+          aggregations:
+            - alignment_period: "300s"
+              per_series_aligner: "ALIGN_RATE"
+              cross_series_reducer: "REDUCE_MEAN"
+
+  - name: "AutoVideo - Long Pipeline Duration"
+    display_name: "AutoVideo Long Pipeline Duration"
+    documentation:
+      content: "AutoVideo pipeline is taking longer than expected"
+      mime_type: "text/markdown"
+    conditions:
+      - display_name: "Pipeline duration > 30 minutes"
+        condition_threshold:
+          filter: 'metric.type="custom.googleapis.com/autovideo/pipeline_duration"'
+          comparison: "COMPARISON_GREATER_THAN"
+          threshold_value: 1800  # 30 minutes in seconds
+          duration: "60s"
+          aggregations:
+            - alignment_period: "60s"
+              per_series_aligner: "ALIGN_MAX"
+
+  - name: "AutoVideo - Service Down"
+    display_name: "AutoVideo Service Down"
+    documentation:
+      content: "AutoVideo service is not responding to health checks"
+      mime_type: "text/markdown"
+    conditions:
+      - display_name: "Health check failures"
+        condition_threshold:
+          filter: 'metric.type="custom.googleapis.com/autovideo/health_check" AND metric.labels.status="unhealthy"'
+          comparison: "COMPARISON_GREATER_THAN"
+          threshold_value: 0
+          duration: "300s"
+          aggregations:
+            - alignment_period: "60s"
+              per_series_aligner: "ALIGN_RATE"
+              cross_series_reducer: "REDUCE_SUM"
+
+  - name: "AutoVideo - High Memory Usage"
+    display_name: "AutoVideo High Memory Usage"
+    documentation:
+      content: "AutoVideo service is using high memory"
+      mime_type: "text/markdown"
+    conditions:
+      - display_name: "Memory utilization > 80%"
+        condition_threshold:
+          filter: 'resource.type="cloud_run_revision" AND resource.labels.service_name="av-app" AND metric.type="run.googleapis.com/container/memory/utilizations"'
+          comparison: "COMPARISON_GREATER_THAN"
+          threshold_value: 0.8
+          duration: "300s"
+          aggregations:
+            - alignment_period: "60s"
+              per_series_aligner: "ALIGN_MEAN"
+              cross_series_reducer: "REDUCE_MEAN"
+
+  - name: "AutoVideo - High CPU Usage"
+    display_name: "AutoVideo High CPU Usage"
+    documentation:
+      content: "AutoVideo service is using high CPU"
+      mime_type: "text/markdown"
+    conditions:
+      - display_name: "CPU utilization > 80%"
+        condition_threshold:
+          filter: 'resource.type="cloud_run_revision" AND resource.labels.service_name="av-app" AND metric.type="run.googleapis.com/container/cpu/utilizations"'
+          comparison: "COMPARISON_GREATER_THAN"
+          threshold_value: 0.8
+          duration: "300s"
+          aggregations:
+            - alignment_period: "60s"
+              per_series_aligner: "ALIGN_MEAN"
+              cross_series_reducer: "REDUCE_MEAN"
+
+# Custom Metrics
+custom_metrics:
+  - name: "autovideo/health_check"
+    description: "Health check status (1=healthy, 0=unhealthy)"
+    type: "GAUGE"
+    value_type: "DOUBLE"
+    labels:
+      - key: "status"
+        description: "Health status (healthy/unhealthy)"
+
+  - name: "autovideo/pipeline_started"
+    description: "Video generation pipeline started"
+    type: "GAUGE"
+    value_type: "DOUBLE"
+
+  - name: "autovideo/pipeline_completed"
+    description: "Video generation pipeline completed"
+    type: "GAUGE"
+    value_type: "DOUBLE"
+    labels:
+      - key: "status"
+        description: "Completion status (success/error)"
+
+  - name: "autovideo/pipeline_duration"
+    description: "Total pipeline duration in seconds"
+    type: "GAUGE"
+    value_type: "DOUBLE"
+
+  - name: "autovideo/phase_duration"
+    description: "Individual phase duration in seconds"
+    type: "GAUGE"
+    value_type: "DOUBLE"
+    labels:
+      - key: "phase"
+        description: "Pipeline phase name"
+
+  - name: "autovideo/generation_request"
+    description: "Video generation requests"
+    type: "GAUGE"
+    value_type: "DOUBLE"
+    labels:
+      - key: "status"
+        description: "Request status (accepted/rejected/error)"
+      - key: "reason"
+        description: "Rejection reason if applicable"
+
+  - name: "autovideo/images_generated"
+    description: "Number of images generated per pipeline run"
+    type: "GAUGE"
+    value_type: "DOUBLE"
+
+  - name: "autovideo/image_prompts_count"
+    description: "Number of image prompts extracted from story"
+    type: "GAUGE"
+    value_type: "DOUBLE"
+
+# Dashboard Configuration
+dashboards:
+  - name: "AutoVideo Operations Dashboard"
+    description: "Main operational dashboard for AutoVideo application"
+    widgets:
+      - title: "Pipeline Success Rate"
+        type: "scorecard"
+        metric: "custom.googleapis.com/autovideo/pipeline_completed"
+        filter: 'metric.labels.status="success"'
+        
+      - title: "Average Pipeline Duration"
+        type: "scorecard"
+        metric: "custom.googleapis.com/autovideo/pipeline_duration"
+        
+      - title: "Error Rate"
+        type: "line_chart"
+        metric: "logging.googleapis.com/log_entry_count"
+        filter: 'resource.type="cloud_run_revision" AND severity="ERROR"'
+        
+      - title: "Request Volume"
+        type: "line_chart"
+        metric: "custom.googleapis.com/autovideo/generation_request"
+        
+      - title: "Phase Durations"
+        type: "stacked_area"
+        metric: "custom.googleapis.com/autovideo/phase_duration"
+        group_by: "metric.labels.phase"
+        
+      - title: "Memory Usage"
+        type: "line_chart"
+        metric: "run.googleapis.com/container/memory/utilizations"
+        filter: 'resource.labels.service_name="av-app"'
+        
+      - title: "CPU Usage"
+        type: "line_chart"
+        metric: "run.googleapis.com/container/cpu/utilizations"
+        filter: 'resource.labels.service_name="av-app"'
+        
+      - title: "Instance Count"
+        type: "line_chart"
+        metric: "run.googleapis.com/container/instance_count"
+        filter: 'resource.labels.service_name="av-app"'
+
+# Log-based Metrics
+log_metrics:
+  - name: "autovideo_errors"
+    description: "Count of error log entries"
+    filter: 'resource.type="cloud_run_revision" AND resource.labels.service_name="av-app" AND severity="ERROR"'
+    metric_descriptor:
+      metric_kind: "GAUGE"
+      value_type: "INT64"
+
+  - name: "autovideo_api_calls"
+    description: "Count of API calls by service"
+    filter: 'resource.type="cloud_run_revision" AND resource.labels.service_name="av-app" AND jsonPayload.api_service!=""'
+    metric_descriptor:
+      metric_kind: "GAUGE"
+      value_type: "INT64"
+    label_extractors:
+      api_service: "EXTRACT(jsonPayload.api_service)"
+
+# SLO Configuration
+slos:
+  - name: "AutoVideo Availability SLO"
+    description: "99.5% availability target"
+    service: "av-app"
+    slo_id: "availability-slo"
+    goal: 0.995
+    rolling_period: "30d"
+    good_total_ratio:
+      good_service_filter: 'resource.type="cloud_run_revision" AND resource.labels.service_name="av-app" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="2xx"'
+      total_service_filter: 'resource.type="cloud_run_revision" AND resource.labels.service_name="av-app" AND metric.type="run.googleapis.com/request_count"'
+
+  - name: "AutoVideo Pipeline Success SLO"
+    description: "95% pipeline success rate target"
+    service: "av-app"
+    slo_id: "pipeline-success-slo"
+    goal: 0.95
+    rolling_period: "7d"
+    good_total_ratio:
+      good_service_filter: 'metric.type="custom.googleapis.com/autovideo/pipeline_completed" AND metric.labels.status="success"'
+      total_service_filter: 'metric.type="custom.googleapis.com/autovideo/pipeline_completed"' 

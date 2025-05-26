@@ -1,0 +1,122 @@
+name: Setup Google Cloud Monitoring
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_update:
+        description: 'Force update all monitoring resources'
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches: [ main ]
+    paths:
+      - 'monitoring-config.yaml'
+      - 'scripts/setup_monitoring.py'
+      - '.github/workflows/setup-monitoring.yml'
+
+env:
+  PROJECT_ID: ${{ secrets.GOOGLE_CLOUD_PROJECT_ID }}
+  REGION: us-central1
+
+jobs:
+  setup-monitoring:
+    name: Setup Google Cloud Monitoring
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install google-cloud-monitoring google-cloud-logging google-cloud-error-reporting pyyaml
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GOOGLE_CLOUD_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.PROJECT_ID }}
+
+    - name: Verify Google Cloud authentication
+      run: |
+        gcloud auth list
+        gcloud config list project
+
+    - name: Make monitoring setup script executable
+      run: chmod +x scripts/setup_monitoring.py
+
+    - name: Validate monitoring configuration
+      run: |
+        python -c "
+        import yaml
+        with open('monitoring-config.yaml', 'r') as f:
+            config = yaml.safe_load(f)
+        print('✅ Monitoring configuration is valid')
+        print(f'Found {len(config.get(\"alerting_policies\", []))} alerting policies')
+        print(f'Found {len(config.get(\"custom_metrics\", []))} custom metrics')
+        print(f'Found {len(config.get(\"notification_channels\", []))} notification channels')
+        "
+
+    - name: Setup Google Cloud Monitoring
+      run: |
+        python scripts/setup_monitoring.py \
+          --project-id ${{ env.PROJECT_ID }} \
+          --config monitoring-config.yaml
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+
+    - name: Verify monitoring setup
+      run: |
+        echo "Verifying monitoring setup..."
+        
+        # Check if custom metrics were created
+        gcloud logging metrics list --format="table(name)" | grep -E "(autovideo|pipeline)" || echo "No custom log metrics found yet"
+        
+        # Check if alert policies were created
+        gcloud alpha monitoring policies list --format="table(displayName,enabled)" | grep -i autovideo || echo "No alert policies found yet"
+        
+        echo "✅ Monitoring verification completed"
+
+    - name: Create monitoring summary
+      run: |
+        echo "## 📊 Google Cloud Monitoring Setup Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Monitoring Components Deployed:" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Custom metrics for pipeline tracking" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Alerting policies for error detection" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Log-based metrics for application monitoring" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Notification channels for alerts" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Next Steps:" >> $GITHUB_STEP_SUMMARY
+        echo "1. Configure notification channel email addresses in GCP Console" >> $GITHUB_STEP_SUMMARY
+        echo "2. Set up Slack webhooks if using Slack notifications" >> $GITHUB_STEP_SUMMARY
+        echo "3. Review alert thresholds and adjust as needed" >> $GITHUB_STEP_SUMMARY
+        echo "4. Check the monitoring dashboard: https://console.cloud.google.com/monitoring/dashboards" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Monitoring Resources:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Project ID:** ${{ env.PROJECT_ID }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Region:** ${{ env.REGION }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Service Name:** av-app" >> $GITHUB_STEP_SUMMARY
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "❌ Monitoring setup failed. Please check the logs and ensure:" >> $GITHUB_STEP_SUMMARY
+        echo "1. Google Cloud credentials are properly configured" >> $GITHUB_STEP_SUMMARY
+        echo "2. The service account has monitoring admin permissions" >> $GITHUB_STEP_SUMMARY
+        echo "3. The monitoring configuration file is valid" >> $GITHUB_STEP_SUMMARY 

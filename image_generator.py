@@ -12,7 +12,8 @@ timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 # Initialize OpenAI client globally
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
-    organization=os.getenv("OPENAI_ORG_ID")
+    organization=os.getenv("OPENAI_ORG_ID"),
+    base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
 )
 
 def generate_image(prompt, output_path):

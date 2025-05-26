@@ -7,7 +7,10 @@ def test_openai_connectivity():
         print("FAIL: OPENAI_API_KEY environment variable is not set.")
         return False
     try:
-        client = openai.OpenAI(api_key=api_key)
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
+        )
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[

@@ -32,7 +32,10 @@ class TopicManager:
                 if not api_key:
                     raise ValueError("OPENAI_API_KEY environment variable is not set")
                 logger.info("Initializing OpenAI client")
-                self._client = OpenAI(api_key=api_key)
+                self._client = OpenAI(
+                    api_key=api_key,
+                    base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
+                )
                 logger.info("OpenAI client initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize OpenAI client: {str(e)}")

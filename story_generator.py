@@ -11,7 +11,8 @@ load_dotenv()
 # Initialize OpenAI client
 client = OpenAI(
     api_key=os.getenv('OPENAI_API_KEY'),
-    organization=os.getenv('OPENAI_ORG_ID')
+    organization=os.getenv('OPENAI_ORG_ID'),
+    base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
 )
 
 logging.info(f"API Key: {os.getenv('OPENAI_API_KEY')[:5]}...{os.getenv('OPENAI_API_KEY')[-5:]}")

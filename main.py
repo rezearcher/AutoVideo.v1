@@ -5,13 +5,21 @@ from worker_client import WorkerClient
 from story_generator import generate_story, extract_image_prompts
 from image_generator import generate_images
 from voiceover_generator import generate_voiceover
-from video_creator import create_video
 from youtube_uploader import upload_video
 from datetime import datetime
 import threading
 import time
 from timing_metrics import TimingMetrics
 from topic_manager import TopicManager
+
+# Optional import for local video processing fallback
+try:
+    from video_creator import create_video
+    LOCAL_VIDEO_PROCESSING_AVAILABLE = True
+except ImportError as e:
+    LOCAL_VIDEO_PROCESSING_AVAILABLE = False
+    logging.warning(f"Local video processing not available: {e}")
+    create_video = None
 
 # Google Cloud Monitoring imports
 try:
@@ -262,11 +270,32 @@ def generate_video_thread():
         timing_metrics.end_phase()
         send_custom_metric("phase_duration", phase_duration, {"phase": "voiceover_generation"})
         
-        # Create video using video_creator
+        # Create video using GPU worker (primary) or local processing (fallback)
         timing_metrics.start_phase("video_creation")
         phase_start = time.time()
         output_path = f"{output_dir}/final_video.mp4"
-        video_path = create_video(image_paths, audio_path, story, timestamp, output_path)
+        
+        # Try GPU worker first
+        try:
+            logger.info("Attempting video creation with GPU worker...")
+            worker_client = WorkerClient()
+            video_path = worker_client.create_video(image_paths, audio_path, story, timestamp, output_path)
+            logger.info("Video created successfully using GPU worker")
+            send_custom_metric("video_creation_method", 1.0, {"method": "gpu_worker"})
+        except Exception as gpu_error:
+            logger.warning(f"GPU worker failed: {gpu_error}")
+            
+            # Fallback to local processing if available
+            if LOCAL_VIDEO_PROCESSING_AVAILABLE and create_video:
+                logger.info("Falling back to local video processing...")
+                video_path = create_video(image_paths, audio_path, story, timestamp, output_path)
+                logger.info("Video created successfully using local processing")
+                send_custom_metric("video_creation_method", 1.0, {"method": "local_fallback"})
+            else:
+                logger.error("Both GPU worker and local processing failed/unavailable")
+                send_custom_metric("video_creation_method", 1.0, {"method": "failed"})
+                raise Exception(f"Video creation failed: GPU worker error: {gpu_error}, Local processing unavailable: {not LOCAL_VIDEO_PROCESSING_AVAILABLE}")
+        
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()
         send_custom_metric("phase_duration", phase_duration, {"phase": "video_creation"})

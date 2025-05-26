@@ -1,9 +1,13 @@
 import json
 import random
 import os
+import logging
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from openai import OpenAI
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -16,8 +20,24 @@ class TopicManager:
         self.topics = []
         self.used_topics = []
         self.last_update = None
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self._client = None
         self._load_topics()
+        
+    @property
+    def client(self):
+        """Lazy initialization of OpenAI client."""
+        if self._client is None:
+            try:
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY environment variable is not set")
+                logger.info("Initializing OpenAI client")
+                self._client = OpenAI(api_key=api_key)
+                logger.info("OpenAI client initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize OpenAI client: {str(e)}")
+                raise
+        return self._client
         
     def _load_topics(self):
         """Load topics from JSON file or create new file if it doesn't exist."""

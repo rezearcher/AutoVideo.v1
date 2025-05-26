@@ -110,21 +110,84 @@ GOOGLE_CLOUD_PROJECT=your_gcp_project_id
 
 ## Deployment
 
-### Google Cloud Run
+### Automated Deployment Process
 
-1. Build and push the container:
-   ```bash
-   gcloud builds submit --tag gcr.io/$GOOGLE_CLOUD_PROJECT/av-app
-   ```
+**🚀 The application automatically deploys when you commit code to the `main` branch.**
 
-2. Deploy the service:
-   ```bash
-   gcloud run deploy av-app \
-     --image gcr.io/$GOOGLE_CLOUD_PROJECT/av-app \
-     --platform managed \
-     --region us-central1 \
-     --allow-unauthenticated
-   ```
+The deployment process is fully automated via GitHub Actions and includes:
+
+1. **Trigger**: Any push to the `main` branch
+2. **Testing**: Runs API connectivity tests for all services
+3. **Build**: Creates Docker container with your latest code
+4. **Deploy**: Deploys to Google Cloud Run in production
+
+### Deployment Pipeline
+
+```mermaid
+graph LR
+    A[Push to main] --> B[Run Tests]
+    B --> C[Build Container]
+    C --> D[Deploy to Cloud Run]
+    D --> E[Service Live]
+```
+
+#### Step-by-Step Process:
+
+1. **API Tests** (`test` job)
+   - Tests OpenAI API connectivity
+   - Tests ElevenLabs API connectivity  
+   - Tests YouTube API credentials
+   - Must pass for deployment to proceed
+
+2. **Production Deployment** (`deploy-production` job)
+   - Builds Docker container with latest code
+   - Pushes to Google Container Registry
+   - Deploys to Cloud Run with production configuration:
+     - **Service**: `av-app`
+     - **Region**: `us-central1`
+     - **Resources**: 2Gi memory, 2 CPU
+     - **Scaling**: 1-10 instances
+     - **Timeout**: 300s
+
+### Manual Deployment
+
+If you need to deploy manually (not recommended for production):
+
+```bash
+# Using the deployment script
+./scripts/deploy.sh
+
+# Or using gcloud directly
+gcloud builds submit --tag gcr.io/$GOOGLE_CLOUD_PROJECT/av-app
+gcloud run deploy av-app \
+  --image gcr.io/$GOOGLE_CLOUD_PROJECT/av-app \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated
+```
+
+### Monitoring Deployments
+
+- **GitHub Actions**: Check the Actions tab in your repository
+- **Cloud Run Console**: Monitor service health and logs
+- **Health Check**: `GET /health` endpoint for service status
+
+### Deployment Requirements
+
+Before pushing to main, ensure:
+- [ ] All API keys are configured in GitHub Secrets
+- [ ] Code passes local tests
+- [ ] Environment variables are properly set
+- [ ] No sensitive data in code (use secrets instead)
+
+### Required GitHub Secrets
+
+The following secrets must be configured in your repository:
+- `OPENAI_API_KEY`
+- `ELEVENLABS_API_KEY` 
+- `YOUTUBE_CLIENT_ID`
+- `YOUTUBE_CLIENT_SECRET`
+- `YOUTUBE_PROJECT_ID`
 
 ## API Endpoints
 

@@ -328,8 +328,16 @@ except Exception as e:
     logger.error(f"Failed to initialize application: {str(e)}")
     is_initialized = False
 
-# Expose the WSGI application for Gunicorn
+# Expose WSGI application for Gunicorn
 application = app
+
+# Create ASGI app for Hypercorn (HTTP/2 support)
+try:
+    from asgiref.wsgi import WsgiToAsgi
+    asgi_app = WsgiToAsgi(app)
+except ImportError:
+    # Fallback if asgiref is not available
+    asgi_app = app
 
 # For development/testing
 if __name__ == "__main__":

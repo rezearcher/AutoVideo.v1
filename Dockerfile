@@ -69,5 +69,5 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE ${PORT}
 
-# Start with Gunicorn for stable HTTP handling
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--worker-class", "gthread", "--timeout", "120", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "--forwarded-allow-ips", "*", "--proxy-allow-from", "*", "main:application"] 
+# Use Hypercorn with sync workers - Cloud Run handles HTTP/2 termination
+CMD ["hypercorn", "main:asgi_app", "--bind", "0.0.0.0:8080", "--workers", "1", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info"] 

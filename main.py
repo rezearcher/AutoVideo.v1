@@ -328,9 +328,10 @@ except Exception as e:
     logger.error(f"Failed to initialize application: {str(e)}")
     is_initialized = False
 
-# Expose the WSGI application
+# Expose the WSGI application for Gunicorn
 application = app
 
+# For development/testing
 if __name__ == "__main__":
     # Start Flask server
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080, debug=False)

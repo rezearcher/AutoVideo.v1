@@ -69,5 +69,5 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE ${PORT}
 
-# Start with uvicorn for better HTTP/2 support
-CMD ["uvicorn", "main:application", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--log-level", "info", "--access-log", "--timeout-keep-alive", "120", "--http", "h11"] 
+# Start with Gunicorn for stable HTTP handling
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--timeout", "120", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-", "main:application"] 

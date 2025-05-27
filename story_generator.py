@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import time
 import random
+import httpx
 
 # Load environment variables
 load_dotenv()
@@ -13,18 +14,36 @@ load_dotenv()
 client = None
 
 def get_openai_client():
-    """Get or initialize the OpenAI client."""
+    """Get or initialize the OpenAI client with robust configuration."""
     global client
     if client is None:
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
             raise ValueError("OPENAI_API_KEY environment variable is not set")
+        
+        # Create a custom HTTP client with better timeout and retry settings
+        http_client = httpx.Client(
+            timeout=httpx.Timeout(
+                connect=10.0,  # 10 seconds to establish connection
+                read=60.0,     # 60 seconds to read response
+                write=10.0,    # 10 seconds to write request
+                pool=5.0       # 5 seconds to get connection from pool
+            ),
+            limits=httpx.Limits(
+                max_keepalive_connections=5,
+                max_connections=10,
+                keepalive_expiry=30.0
+            ),
+            retries=3  # Built-in retry for connection issues
+        )
+        
         client = OpenAI(
             api_key=api_key,
             organization=os.getenv('OPENAI_ORG_ID'),
             base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1'),
-            timeout=30.0  # 30 second timeout per request
+            http_client=http_client
         )
+        logging.info("✅ OpenAI client initialized with robust configuration")
     return client
 
 def call_openai_with_backoff(max_retries=3, max_time=60, **kwargs):

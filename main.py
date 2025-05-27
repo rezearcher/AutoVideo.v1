@@ -3,7 +3,7 @@ import sys
 import logging
 from flask import Flask, jsonify, request
 from worker_client import WorkerClient
-from story_generator import generate_story, extract_image_prompts
+from story_generator import generate_story, extract_image_prompts, get_openai_client
 from image_generator import generate_images
 from voiceover_generator import generate_voiceover
 from youtube_uploader import upload_video
@@ -193,18 +193,18 @@ def health_check():
 
 @app.route('/health/openai')
 def openai_health_check():
-    """OpenAI API health check endpoint."""
+    """Test OpenAI API connectivity and model access."""
     try:
-        import openai
-        
         # Set the API key
         openai_key = os.getenv("OPENAI_API_KEY")
         if not openai_key:
             return jsonify({"status": "error", "error": "OPENAI_API_KEY not found"}), 500
         
-        # Test OpenAI API connectivity
+        # Test OpenAI API connectivity using the same robust client as story generation
         logger.info("Testing OpenAI API connectivity...")
-        client = openai.OpenAI(api_key=openai_key)
+        
+        # Import the robust client from story_generator
+        client = get_openai_client()
         
         # Simple API test - list models (lightweight call)
         models = client.models.list()

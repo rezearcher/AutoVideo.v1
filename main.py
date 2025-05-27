@@ -2,7 +2,6 @@ import os
 import sys
 import logging
 from flask import Flask, jsonify, request
-from worker_client import WorkerClient
 from story_generator import generate_story, extract_image_prompts, get_openai_client
 from image_generator import generate_images
 from voiceover_generator import generate_voiceover

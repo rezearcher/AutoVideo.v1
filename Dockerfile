@@ -37,6 +37,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libwebp7 \
     imagemagick \
     curl \
+    iputils-ping \
+    dnsutils \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables

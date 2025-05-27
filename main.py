@@ -295,7 +295,7 @@ def generate_video_batch():
         phase_start = time.time()
         output_path = f"{output_dir}/final_video.mp4"
         
-        # Try GPU worker first
+        # Try GPU worker first with initialization timeout
         try:
             logger.info("🚀 Attempting video creation with Vertex AI GPU...")
             
@@ -304,17 +304,48 @@ def generate_video_batch():
             logger.info(f"🎵 Audio path: {audio_path}")
             logger.info(f"📝 Story length: {len(story)} characters")
             
-            # Use Vertex AI GPU service
-            from vertex_gpu_service import VertexGPUJobService
+            # Import and initialize with timeout protection
+            import signal
             
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
-            gpu_service = VertexGPUJobService(project_id=project_id)
+            def _timeout_handler(signum, frame):
+                raise TimeoutError("VertexGPUJobService initialization timed out after 60s")
+            
+            # Set up 60s timeout for initialization
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(60)
+            
+            try:
+                logger.info("🔧 Starting VertexGPUJobService initialization with 60s timeout...")
+                from vertex_gpu_service import VertexGPUJobService
+                logger.info("✅ Import successful, creating service instance...")
+                
+                project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
+                gpu_service = VertexGPUJobService(project_id=project_id)
+                logger.info("✅ VertexGPUJobService initialized successfully")
+                
+            except TimeoutError as timeout_error:
+                logger.error(f"🕐 GPU service initialization timed out: {timeout_error}")
+                logger.error("🔄 Falling back to local processing due to initialization timeout")
+                raise Exception(f"Vertex AI initialization timeout: {timeout_error}")
+                
+            except Exception as init_error:
+                logger.error(f"❌ Failed to import or initialize VertexGPUJobService: {init_error}")
+                logger.error(f"❌ Error type: {type(init_error).__name__}")
+                import traceback
+                logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+                raise Exception(f"Vertex AI initialization failed: {init_error}")
+                
+            finally:
+                # Always clear the alarm
+                signal.alarm(0)
             
             # Submit job to Vertex AI
+            logger.info("📤 Submitting job to Vertex AI...")
             job_id = gpu_service.create_video_job(image_paths, audio_path, story)
-            logger.info(f"Submitted Vertex AI job: {job_id}")
+            logger.info(f"✅ Submitted Vertex AI job: {job_id}")
             
             # Wait for completion
+            logger.info("⏳ Waiting for job completion...")
             result = gpu_service.wait_for_job_completion(job_id, timeout=600)
             
             if result.get("status") == "completed":
@@ -448,7 +479,7 @@ def generate_video_thread():
         phase_start = time.time()
         output_path = f"{output_dir}/final_video.mp4"
         
-        # Try GPU worker first
+        # Try GPU worker first with initialization timeout
         try:
             logger.info("🚀 Attempting video creation with Vertex AI GPU...")
             
@@ -457,17 +488,48 @@ def generate_video_thread():
             logger.info(f"🎵 Audio path: {audio_path}")
             logger.info(f"📝 Story length: {len(story)} characters")
             
-            # Use Vertex AI GPU service
-            from vertex_gpu_service import VertexGPUJobService
+            # Import and initialize with timeout protection
+            import signal
             
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
-            gpu_service = VertexGPUJobService(project_id=project_id)
+            def _timeout_handler(signum, frame):
+                raise TimeoutError("VertexGPUJobService initialization timed out after 60s")
+            
+            # Set up 60s timeout for initialization
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(60)
+            
+            try:
+                logger.info("🔧 Starting VertexGPUJobService initialization with 60s timeout...")
+                from vertex_gpu_service import VertexGPUJobService
+                logger.info("✅ Import successful, creating service instance...")
+                
+                project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
+                gpu_service = VertexGPUJobService(project_id=project_id)
+                logger.info("✅ VertexGPUJobService initialized successfully")
+                
+            except TimeoutError as timeout_error:
+                logger.error(f"🕐 GPU service initialization timed out: {timeout_error}")
+                logger.error("🔄 Falling back to local processing due to initialization timeout")
+                raise Exception(f"Vertex AI initialization timeout: {timeout_error}")
+                
+            except Exception as init_error:
+                logger.error(f"❌ Failed to import or initialize VertexGPUJobService: {init_error}")
+                logger.error(f"❌ Error type: {type(init_error).__name__}")
+                import traceback
+                logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+                raise Exception(f"Vertex AI initialization failed: {init_error}")
+                
+            finally:
+                # Always clear the alarm
+                signal.alarm(0)
             
             # Submit job to Vertex AI
+            logger.info("📤 Submitting job to Vertex AI...")
             job_id = gpu_service.create_video_job(image_paths, audio_path, story)
-            logger.info(f"Submitted Vertex AI job: {job_id}")
+            logger.info(f"✅ Submitted Vertex AI job: {job_id}")
             
             # Wait for completion
+            logger.info("⏳ Waiting for job completion...")
             result = gpu_service.wait_for_job_completion(job_id, timeout=600)
             
             if result.get("status") == "completed":

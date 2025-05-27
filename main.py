@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 from flask import Flask, jsonify, request
 from worker_client import WorkerClient
@@ -218,8 +219,162 @@ def start_generation():
         send_custom_metric("generation_request", 1.0, {"status": "error"})
         return jsonify({"error": "Failed to start generation"}), 500
 
+def generate_video_batch():
+    """Run video generation once and exit (batch mode)."""
+    global is_generating, last_generation_status, topic_manager, is_initialized
+    
+    logger.info("🎬 Starting AutoVideo batch processing...")
+    
+    # Initialize the application
+    is_initialized = initialize_app()
+    if not is_initialized:
+        logger.error("❌ Application initialization failed")
+        sys.exit(1)
+    
+    generation_start_time = time.time()
+    
+    try:
+        is_generating = True
+        # Start timing
+        timing_metrics.start_pipeline()
+        
+        # Send pipeline start metric
+        send_custom_metric("pipeline_started", 1.0, {"mode": "batch"})
+        logger.info("📊 Pipeline started - metrics sent")
+        
+        # Create timestamped output directory
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = f"output/run_{timestamp}"
+        os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"📁 Created output directory: {output_dir}")
+        
+        # Initialize topic manager and get next topic
+        if topic_manager is None:
+            topic_manager = TopicManager()
+        story_prompt = topic_manager.get_next_topic()
+        logger.info(f"📝 Topic selected: {story_prompt}")
+        
+        # Generate content
+        logger.info("🤖 Generating story...")
+        timing_metrics.start_phase("story_generation")
+        phase_start = time.time()
+        story, prompt = generate_story(story_prompt)
+        phase_duration = time.time() - phase_start
+        timing_metrics.end_phase()
+        send_custom_metric("phase_duration", phase_duration, {"phase": "story_generation"})
+        logger.info(f"✅ Story generated in {phase_duration:.2f}s")
+        
+        # Extract image prompts from the story
+        image_prompts = extract_image_prompts(story)
+        send_custom_metric("image_prompts_count", len(image_prompts))
+        logger.info(f"🖼️ Extracted {len(image_prompts)} image prompts")
+        
+        logger.info("🎨 Generating images...")
+        timing_metrics.start_phase("image_generation")
+        phase_start = time.time()
+        image_paths = generate_images(image_prompts, output_dir)
+        phase_duration = time.time() - phase_start
+        timing_metrics.end_phase()
+        send_custom_metric("phase_duration", phase_duration, {"phase": "image_generation"})
+        send_custom_metric("images_generated", len(image_paths))
+        logger.info(f"✅ Generated {len(image_paths)} images in {phase_duration:.2f}s")
+        
+        logger.info("🎙️ Generating voiceover...")
+        timing_metrics.start_phase("voiceover_generation")
+        phase_start = time.time()
+        audio_path = os.path.join(output_dir, "voiceover.mp3")
+        generate_voiceover(story, audio_path)
+        phase_duration = time.time() - phase_start
+        timing_metrics.end_phase()
+        send_custom_metric("phase_duration", phase_duration, {"phase": "voiceover_generation"})
+        logger.info(f"✅ Voiceover generated in {phase_duration:.2f}s")
+        
+        # Create video using GPU worker (primary) or local processing (fallback)
+        logger.info("🎬 Creating video...")
+        timing_metrics.start_phase("video_creation")
+        phase_start = time.time()
+        output_path = f"{output_dir}/final_video.mp4"
+        
+        # Try GPU worker first
+        try:
+            logger.info("🚀 Attempting video creation with GPU worker...")
+            
+            # Get the worker URL first
+            project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'autovideo-442318')
+            worker_url = WorkerClient.create_worker(project_id)
+            
+            if not worker_url:
+                raise Exception("Could not get GPU worker URL")
+            
+            worker_client = WorkerClient(worker_url)
+            video_path = worker_client.create_video(image_paths, audio_path, story, timestamp, output_path)
+            logger.info("✅ Video created successfully using GPU worker")
+            send_custom_metric("video_creation_method", 1.0, {"method": "gpu_worker"})
+        except Exception as gpu_error:
+            logger.warning(f"⚠️ GPU worker failed: {gpu_error}")
+            
+            # Fallback to local processing if available
+            if LOCAL_VIDEO_PROCESSING_AVAILABLE and create_video:
+                logger.info("🔄 Falling back to local video processing...")
+                video_path = create_video(image_paths, audio_path, story, timestamp, output_path)
+                logger.info("✅ Video created successfully using local processing")
+                send_custom_metric("video_creation_method", 1.0, {"method": "local_fallback"})
+            else:
+                logger.error("❌ Both GPU worker and local processing failed/unavailable")
+                send_custom_metric("video_creation_method", 1.0, {"method": "failed"})
+                raise Exception(f"Video creation failed: GPU worker error: {gpu_error}, Local processing unavailable: {not LOCAL_VIDEO_PROCESSING_AVAILABLE}")
+        
+        phase_duration = time.time() - phase_start
+        timing_metrics.end_phase()
+        send_custom_metric("phase_duration", phase_duration, {"phase": "video_creation"})
+        logger.info(f"✅ Video created in {phase_duration:.2f}s")
+        
+        # Upload to YouTube
+        logger.info("📤 Uploading to YouTube...")
+        timing_metrics.start_phase("youtube_upload")
+        phase_start = time.time()
+        # Extract title and description from story
+        story_lines = story.split('\n')
+        title = story_lines[0].replace('Title: ', '')
+        description = story_lines[1].replace('Description: ', '')
+        # Add the full story as additional context
+        description += "\n\nFull Story:\n" + "\n".join(story_lines[2:])
+        upload_video(video_path, title, description)
+        phase_duration = time.time() - phase_start
+        timing_metrics.end_phase()
+        send_custom_metric("phase_duration", phase_duration, {"phase": "youtube_upload"})
+        logger.info(f"✅ Video uploaded to YouTube in {phase_duration:.2f}s")
+        
+        # Calculate total pipeline duration
+        total_duration = time.time() - generation_start_time
+        send_custom_metric("pipeline_duration", total_duration)
+        send_custom_metric("pipeline_completed", 1.0, {"status": "success", "mode": "batch"})
+        
+        logger.info(f"🎉 Video generation and upload completed successfully in {total_duration:.2f}s")
+        logger.info(f"📊 Final video: {video_path}")
+        last_generation_status = "completed"
+        
+        # Exit successfully
+        sys.exit(0)
+        
+    except Exception as e:
+        total_duration = time.time() - generation_start_time
+        send_custom_metric("pipeline_duration", total_duration)
+        send_custom_metric("pipeline_completed", 1.0, {"status": "error", "mode": "batch"})
+        
+        report_error(e, "video_generation_pipeline_batch")
+        logger.error(f"❌ Error generating video: {str(e)}")
+        last_generation_status = f"error: {str(e)}"
+        
+        # Exit with error
+        sys.exit(1)
+    finally:
+        is_generating = False
+        timing_metrics.end_pipeline()
+        send_custom_metric("pipeline_ended", 1.0, {"mode": "batch"})
+
 def generate_video_thread():
-    """Background thread for video generation."""
+    """Background thread for video generation (monitoring mode)."""
     global is_generating, last_generation_status, topic_manager
     
     generation_start_time = time.time()
@@ -230,7 +385,7 @@ def generate_video_thread():
         timing_metrics.start_pipeline()
         
         # Send pipeline start metric
-        send_custom_metric("pipeline_started", 1.0)
+        send_custom_metric("pipeline_started", 1.0, {"mode": "monitoring"})
         
         # Create timestamped output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -325,7 +480,7 @@ def generate_video_thread():
         # Calculate total pipeline duration
         total_duration = time.time() - generation_start_time
         send_custom_metric("pipeline_duration", total_duration)
-        send_custom_metric("pipeline_completed", 1.0, {"status": "success"})
+        send_custom_metric("pipeline_completed", 1.0, {"status": "success", "mode": "monitoring"})
         
         logger.info("Video generation and upload completed successfully")
         last_generation_status = "completed"
@@ -333,7 +488,7 @@ def generate_video_thread():
     except Exception as e:
         total_duration = time.time() - generation_start_time
         send_custom_metric("pipeline_duration", total_duration)
-        send_custom_metric("pipeline_completed", 1.0, {"status": "error"})
+        send_custom_metric("pipeline_completed", 1.0, {"status": "error", "mode": "monitoring"})
         
         report_error(e, "video_generation_pipeline")
         logger.error(f"Error generating video: {str(e)}")
@@ -341,7 +496,7 @@ def generate_video_thread():
     finally:
         is_generating = False
         timing_metrics.end_pipeline()
-        send_custom_metric("pipeline_ended", 1.0)
+        send_custom_metric("pipeline_ended", 1.0, {"mode": "monitoring"})
 
 # Initialize the application
 try:
@@ -362,7 +517,37 @@ except ImportError:
     # Fallback if asgiref is not available
     asgi_app = app
 
-# For development/testing
+# Main execution logic
 if __name__ == "__main__":
-    # Start Flask server
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='AutoVideo Generator')
+    parser.add_argument('--mode', choices=['batch', 'monitoring'], default='batch',
+                       help='Run mode: batch (generate and exit) or monitoring (keep server alive)')
+    parser.add_argument('--port', type=int, default=8080, help='Port to run Flask server on')
+    
+    # Check if running in Cloud Run (has PORT env var)
+    if os.getenv('PORT'):
+        args = parser.parse_args(['--mode', 'batch', '--port', os.getenv('PORT', '8080')])
+    else:
+        args = parser.parse_args()
+    
+    if args.mode == 'batch':
+        logger.info("🚀 Starting AutoVideo in BATCH mode...")
+        logger.info("📋 Mode: Generate video → Upload → Exit gracefully")
+        
+        # Run video generation directly (not in background thread)
+        generate_video_batch()
+        
+        # generate_video_batch() already calls sys.exit(), but just in case:
+        logger.info("✅ Batch processing completed, exiting...")
+        sys.exit(0)
+        
+    elif args.mode == 'monitoring':
+        logger.info("🚀 Starting AutoVideo in MONITORING mode...")
+        logger.info("📊 Mode: Keep Flask server alive for monitoring and manual triggers")
+        
+        # Start Flask server for monitoring and manual triggers
+        logger.info(f"📊 Starting Flask server on port {args.port}...")
+        app.run(host='0.0.0.0', port=args.port, debug=False)

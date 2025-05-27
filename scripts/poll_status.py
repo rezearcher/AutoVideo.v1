@@ -3,10 +3,12 @@
 import requests
 import time
 import json
+import os
 from datetime import datetime
 import sys
 
-SERVICE_URL = "https://av-app-939407899550.us-central1.run.app"
+# Use environment variable with fallback to current URL for safety
+SERVICE_URL = os.getenv('SERVICE_URL', "https://av-app-939407899550.us-central1.run.app")
 STATUS_ENDPOINT = f"{SERVICE_URL}/status"
 HEALTH_ENDPOINT = f"{SERVICE_URL}/health"
 POLL_INTERVAL = 5  # seconds

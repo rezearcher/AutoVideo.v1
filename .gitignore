@@ -5,6 +5,12 @@ __pycache__/
 dist/
 build/
 .env
+.env.*
+!.env.example
+.env.local
+.env.production
+.env.staging
+.env.development
 .venv
 new_venv/
 output/
@@ -20,4 +26,5 @@ architecture.md
 cloud-storage-config.yaml
 *.md
 !README.md
+!SECURITY.md
 !docs/*.md

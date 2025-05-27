@@ -307,7 +307,7 @@ def generate_video_batch():
             # Use Vertex AI GPU service
             from vertex_gpu_service import VertexGPUJobService
             
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'autovideo-442318')
+            project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
             gpu_service = VertexGPUJobService(project_id=project_id)
             
             # Submit job to Vertex AI
@@ -460,7 +460,7 @@ def generate_video_thread():
             # Use Vertex AI GPU service
             from vertex_gpu_service import VertexGPUJobService
             
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'autovideo-442318')
+            project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
             gpu_service = VertexGPUJobService(project_id=project_id)
             
             # Submit job to Vertex AI

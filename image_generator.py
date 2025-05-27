@@ -41,13 +41,29 @@ def generate_image(prompt, output_path):
         client = get_openai_client()
         logging.info(f"API Key: {os.getenv('OPENAI_API_KEY')[:5]}...{os.getenv('OPENAI_API_KEY')[-5:]}")
         logging.info(f"Organization ID: {os.getenv('OPENAI_ORG_ID')[:5]}...{os.getenv('OPENAI_ORG_ID')[-5:]}")
+        
+        # Make the API call
         response = client.images.generate(
             prompt=prompt,
             n=1,
             size="1024x1024"
         )
         
+        # Validate the response
+        if response is None:
+            raise ValueError("OpenAI API returned None response")
+        
+        if not hasattr(response, 'data') or not response.data:
+            raise ValueError("OpenAI API response has no data")
+        
+        if len(response.data) == 0:
+            raise ValueError("OpenAI API response data is empty")
+        
+        if not hasattr(response.data[0], 'url') or not response.data[0].url:
+            raise ValueError("OpenAI API response has no image URL")
+        
         image_url = response.data[0].url
+        logging.info(f"Generated image URL: {image_url}")
         
         # Download the image
         image_response = requests.get(image_url)
@@ -78,15 +94,24 @@ def generate_images(prompts, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     image_paths = []
     
+    logging.info(f"Generating {len(prompts)} images...")
+    
     for idx, prompt in enumerate(prompts, start=1):
         output_path = os.path.join(output_dir, f"image_{idx}.png")
         try:
+            logging.info(f"Generating image {idx}/{len(prompts)}: {prompt[:50]}...")
             image_path = generate_image(prompt, output_path)
             image_paths.append(image_path)
+            logging.info(f"✅ Successfully generated image {idx}/{len(prompts)}")
         except Exception as e:
-            logging.error(f"Failed to generate image {idx}: {str(e)}")
+            logging.error(f"❌ Failed to generate image {idx}/{len(prompts)}: {str(e)}")
             continue
-            
+    
+    if len(image_paths) == 0:
+        logging.error(f"❌ Failed to generate any images out of {len(prompts)} attempts")
+        raise Exception(f"Failed to generate any images. All {len(prompts)} image generation attempts failed.")
+    
+    logging.info(f"✅ Successfully generated {len(image_paths)}/{len(prompts)} images")
     return image_paths
 
 def download_image(url, filename):

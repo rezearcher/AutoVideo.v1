@@ -292,8 +292,15 @@ def health_check_vertex_ai():
         client = JobServiceClient()
         parent = f"projects/{project_id}/locations/{location}"
         
+        # Create the request object with correct syntax
+        from google.cloud.aiplatform_v1.types import ListCustomJobsRequest
+        request = ListCustomJobsRequest(
+            parent=parent,
+            page_size=1
+        )
+        
         # This will test the actual connection to Vertex AI
-        response = client.list_custom_jobs(parent=parent, page_size=1)
+        response = client.list_custom_jobs(request=request)
         
         return jsonify({
             'status': 'healthy',

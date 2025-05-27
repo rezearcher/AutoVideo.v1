@@ -11,6 +11,9 @@ from typing import Dict, Any, Optional, List
 from google.cloud import aiplatform
 from google.cloud import storage
 import time
+from google.cloud.aiplatform import gapic
+import google.auth
+from google.auth.transport.requests import Request
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +29,22 @@ class VertexGPUJobService:
             
             logger.info(f"📋 Project: {self.project_id}, Region: {self.region}, Bucket: {self.bucket_name}")
             
-            # Initialize Vertex AI with staging bucket
-            logger.info("🚀 Initializing Vertex AI...")
+            # Initialize Vertex AI with proper regional endpoint
+            logger.info("🚀 Initializing Vertex AI with regional endpoint...")
             aiplatform.init(
                 project=project_id, 
                 location=region,
                 staging_bucket=f"gs://{self.bucket_name}"
             )
-            logger.info("✅ Vertex AI initialized successfully")
             
-            # Initialize Storage client
+            # Initialize the GAPIC client with explicit regional endpoint and timeout
+            logger.info(f"🌐 Initializing JobServiceClient for region {region}...")
+            self.job_client = gapic.JobServiceClient(
+                client_options={"api_endpoint": f"{region}-aiplatform.googleapis.com"}
+            )
+            logger.info("✅ Vertex AI and JobServiceClient initialized successfully")
+            
+            # Initialize Storage client with timeout
             logger.info("💾 Initializing GCS client...")
             self.storage_client = storage.Client(project=project_id)
             self.bucket = self.storage_client.bucket(self.bucket_name)
@@ -176,37 +185,80 @@ class VertexGPUJobService:
             # Upload job configuration to GCS
             self.create_job_config(job_id, job_data)
             
-            # Submit the job using the simpler CustomJob API
-            job = aiplatform.CustomJob(
-                display_name=f"av-gpu-job-{job_id}",
-                worker_pool_specs=[
-                    {
-                        "machine_spec": {
-                            "machine_type": self.machine_type,
-                            "accelerator_type": self.accelerator_type,
-                            "accelerator_count": self.accelerator_count,
-                        },
-                        "replica_count": 1,
-                        "container_spec": {
-                            "image_uri": self.container_image,
-                            "args": [
-                                "--job-id", job_id,
-                                "--project-id", self.project_id,
-                                "--bucket-name", self.bucket_name
-                            ],
-                            "env": [
-                                {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
-                            ]
-                        },
+            # Submit the job
+            logger.info("🚀 Creating Vertex AI CustomJob...")
+            try:
+                # Create job specification using GAPIC format
+                logger.info("📋 Building job specification...")
+                parent = f"projects/{self.project_id}/locations/{self.region}"
+                
+                job_spec = {
+                    "display_name": f"av-gpu-job-{job_id}",
+                    "job_spec": {
+                        "worker_pool_specs": [
+                            {
+                                "machine_spec": {
+                                    "machine_type": self.machine_type,
+                                    "accelerator_type": self.accelerator_type,
+                                    "accelerator_count": self.accelerator_count,
+                                },
+                                "replica_count": 1,
+                                "container_spec": {
+                                    "image_uri": self.container_image,
+                                    "args": [
+                                        "--job-id", job_id,
+                                        "--project-id", self.project_id,
+                                        "--bucket-name", self.bucket_name
+                                    ],
+                                    "env": [
+                                        {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
+                                    ]
+                                },
+                            }
+                        ]
                     }
-                ]
-            )
-            
-            # Start the job asynchronously
-            job.run(sync=False)
-            
-            logger.info(f"Submitted GPU job: {job_id}")
-            return job_id
+                }
+                logger.info("✅ Job specification built")
+                
+                # Submit job with timeout using GAPIC client
+                logger.info("🎬 Submitting job to Vertex AI with 60s timeout...")
+                try:
+                    response = self.job_client.create_custom_job(
+                        parent=parent,
+                        custom_job=job_spec,
+                        timeout=60  # 60 second timeout for job submission
+                    )
+                    logger.info(f"✅ Job submitted successfully: {response.name}")
+                    logger.info(f"🎯 Job resource name: {response.name}")
+                    
+                    # Extract job ID from response
+                    vertex_job_id = response.name.split('/')[-1]
+                    logger.info(f"🆔 Vertex AI job ID: {vertex_job_id}")
+                    
+                    return job_id
+                    
+                except Exception as submission_error:
+                    logger.error(f"❌ Job submission failed: {submission_error}")
+                    logger.error(f"❌ Submission error type: {type(submission_error).__name__}")
+                    logger.error(f"❌ Submission error details: {str(submission_error)}")
+                    
+                    # Check if it's a timeout or network issue
+                    if "timeout" in str(submission_error).lower() or "deadline" in str(submission_error).lower():
+                        logger.error("🕐 Job submission timed out - likely network connectivity issue")
+                    elif "permission" in str(submission_error).lower() or "auth" in str(submission_error).lower():
+                        logger.error("🔐 Authentication/permission issue detected")
+                    elif "quota" in str(submission_error).lower():
+                        logger.error("📊 Quota limit reached")
+                    
+                    raise submission_error
+                
+            except Exception as vertex_error:
+                logger.error(f"❌ Vertex AI job creation failed: {vertex_error}")
+                logger.error(f"❌ Error type: {type(vertex_error).__name__}")
+                logger.error(f"❌ Error details: {str(vertex_error)}")
+                import traceback
+                logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+                raise
             
         except Exception as e:
             logger.error(f"Failed to submit GPU job: {e}")
@@ -245,43 +297,76 @@ class VertexGPUJobService:
             # Submit the job
             logger.info("🚀 Creating Vertex AI CustomJob...")
             try:
-                job = aiplatform.CustomJob(
-                    display_name=f"av-gpu-job-{job_id}",
-                    worker_pool_specs=[
-                        {
-                            "machine_spec": {
-                                "machine_type": self.machine_type,
-                                "accelerator_type": self.accelerator_type,
-                                "accelerator_count": self.accelerator_count,
-                            },
-                            "replica_count": 1,
-                            "container_spec": {
-                                "image_uri": self.container_image,
-                                "args": [
-                                    "--job-id", job_id,
-                                    "--project-id", self.project_id,
-                                    "--bucket-name", self.bucket_name
-                                ],
-                                "env": [
-                                    {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
-                                ]
-                            },
-                        }
-                    ]
-                )
-                logger.info("✅ CustomJob object created")
+                # Create job specification using GAPIC format
+                logger.info("📋 Building job specification...")
+                parent = f"projects/{self.project_id}/locations/{self.region}"
                 
-                # Start the job asynchronously
-                logger.info("🎬 Starting job execution...")
-                job.run(sync=False)
-                logger.info(f"🎉 Successfully submitted video creation job: {job_id}")
+                job_spec = {
+                    "display_name": f"av-gpu-job-{job_id}",
+                    "job_spec": {
+                        "worker_pool_specs": [
+                            {
+                                "machine_spec": {
+                                    "machine_type": self.machine_type,
+                                    "accelerator_type": self.accelerator_type,
+                                    "accelerator_count": self.accelerator_count,
+                                },
+                                "replica_count": 1,
+                                "container_spec": {
+                                    "image_uri": self.container_image,
+                                    "args": [
+                                        "--job-id", job_id,
+                                        "--project-id", self.project_id,
+                                        "--bucket-name", self.bucket_name
+                                    ],
+                                    "env": [
+                                        {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
+                                    ]
+                                },
+                            }
+                        ]
+                    }
+                }
+                logger.info("✅ Job specification built")
                 
-                return job_id
+                # Submit job with timeout using GAPIC client
+                logger.info("🎬 Submitting job to Vertex AI with 60s timeout...")
+                try:
+                    response = self.job_client.create_custom_job(
+                        parent=parent,
+                        custom_job=job_spec,
+                        timeout=60  # 60 second timeout for job submission
+                    )
+                    logger.info(f"✅ Job submitted successfully: {response.name}")
+                    logger.info(f"🎯 Job resource name: {response.name}")
+                    
+                    # Extract job ID from response
+                    vertex_job_id = response.name.split('/')[-1]
+                    logger.info(f"🆔 Vertex AI job ID: {vertex_job_id}")
+                    
+                    return job_id
+                    
+                except Exception as submission_error:
+                    logger.error(f"❌ Job submission failed: {submission_error}")
+                    logger.error(f"❌ Submission error type: {type(submission_error).__name__}")
+                    logger.error(f"❌ Submission error details: {str(submission_error)}")
+                    
+                    # Check if it's a timeout or network issue
+                    if "timeout" in str(submission_error).lower() or "deadline" in str(submission_error).lower():
+                        logger.error("🕐 Job submission timed out - likely network connectivity issue")
+                    elif "permission" in str(submission_error).lower() or "auth" in str(submission_error).lower():
+                        logger.error("🔐 Authentication/permission issue detected")
+                    elif "quota" in str(submission_error).lower():
+                        logger.error("📊 Quota limit reached")
+                    
+                    raise submission_error
                 
             except Exception as vertex_error:
-                logger.error(f"❌ Vertex AI job submission failed: {vertex_error}")
+                logger.error(f"❌ Vertex AI job creation failed: {vertex_error}")
                 logger.error(f"❌ Error type: {type(vertex_error).__name__}")
                 logger.error(f"❌ Error details: {str(vertex_error)}")
+                import traceback
+                logger.error(f"❌ Full traceback: {traceback.format_exc()}")
                 raise
             
         except Exception as e:

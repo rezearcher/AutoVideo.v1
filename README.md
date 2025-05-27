@@ -1,482 +1,417 @@
 # **AutoVideo v1 — AI Auto Video Generator**
 
-An automated video generation pipeline that creates engaging videos from AI-generated stories, complete with images, voiceovers, and YouTube uploads. Built with a modern microservices architecture featuring on-demand GPU processing and real-time monitoring.
+An automated video generation pipeline that creates engaging videos from AI-generated stories, complete with images, voiceovers, and YouTube uploads. Built with a modern cloud-native architecture featuring on-demand GPU processing, intelligent fallback strategies, and real-time monitoring.
 
 ## 🏗️ Architecture Overview
 
-AutoVideo is a **batch processing pipeline** with monitoring capabilities:
+AutoVideo is a **fully cloud-native batch processing pipeline** with comprehensive monitoring:
 
 ### **Core Function**
 - 🎬 **Automated Video Generation**: Creates complete videos from AI-generated content
 - 📤 **YouTube Upload**: Automatically publishes to YouTube with metadata
-- 🔄 **Batch Processing**: Runs on-demand or scheduled to generate videos
+- 🔄 **Scheduled Processing**: Runs daily at 9 AM EST to generate and upload videos
+- 🛡️ **Intelligent Fallbacks**: Pexels image fallback when DALL-E fails
 
 ### **Monitoring Interface**
 - 📊 **Flask Web App**: Provides real-time status and health monitoring
-- 🔍 **Pipeline Visibility**: Track generation progress and performance
+- 🔍 **Pipeline Visibility**: Track generation progress through all phases
 - 📈 **Metrics Dashboard**: Monitor resource usage and success rates
+- 🚨 **Error Handling**: Comprehensive logging and timeout management
 
 ### **Main Components**
 
 1. **Video Generation Pipeline** (Core)
-   - AI story generation and scene extraction
-   - Image creation and voiceover synthesis
-   - GPU-accelerated video processing
-   - Automated YouTube publishing
+   - AI story generation with scene extraction
+   - Dual image strategy: DALL-E primary + Pexels fallback
+   - ElevenLabs voiceover synthesis
+   - Vertex AI GPU-accelerated video processing
+   - Automated YouTube publishing with captions
 
 2. **Monitoring Web App** (`av-app`)
    - Flask-based status and health endpoints
-   - Real-time pipeline monitoring
-   - Performance metrics and logging
-   - Deployed on Google Cloud Run
+   - Real-time pipeline monitoring with phase tracking
+   - Performance metrics and comprehensive logging
+   - Deployed on Google Cloud Run with auto-scaling
 
-3. **GPU Processing** (`av-gpu-worker` + Vertex AI)
-   - Cloud Run service for basic video tasks
-   - Vertex AI Custom Jobs for heavy GPU processing
-   - NVIDIA Tesla T4 acceleration
-   - Zero idle costs
+3. **GPU Processing** (Vertex AI Custom Jobs)
+   - On-demand NVIDIA Tesla T4 GPU acceleration
+   - CUDA-optimized video rendering and encoding
+   - Automatic timeout handling and retry logic
+   - Zero idle costs - only pay when processing
 
 ### **Architecture Benefits**
-- 💰 **Cost Efficient**: ~75% cost reduction vs unified GPU deployment
-- 🚀 **Fast Scaling**: Independent scaling for monitoring and processing
-- 🛡️ **Fault Isolation**: GPU issues don't affect monitoring
-- ⚡ **Zero Idle Costs**: GPU resources only used during processing
-- 📊 **Full Visibility**: Monitor every step of video generation
+- 💰 **Cost Efficient**: ~85% cost reduction vs always-on GPU ($35-45/month vs $250/month)
+- 🚀 **Fully Automated**: Daily video generation with zero manual intervention
+- 🛡️ **Fault Tolerant**: Multiple fallback strategies for image generation
+- ⚡ **Zero Idle Costs**: GPU resources only used during video processing
+- 📊 **Full Visibility**: Monitor every step with detailed phase tracking
+- 🔄 **Self-Healing**: Automatic retry logic for network timeouts
 
 ```mermaid
 graph TD
-    A[Trigger: Manual/Scheduled] --> B[Video Generation Pipeline]
-    B --> C[Generate Story & Images]
-    B --> D[Submit GPU Job]
-    D --> E[Vertex AI Custom Job]
-    E --> F[NVIDIA Tesla T4 GPU]
-    F --> G[Video Processing]
-    G --> H[Store in GCS]
-    H --> I[Upload to YouTube]
+    A[Daily Trigger: 9 AM EST] --> B[Story Generation]
+    B --> C[Image Generation: DALL-E]
+    C --> D{Images Generated?}
+    D -->|Success| E[Voiceover Generation]
+    D -->|Failure| F[Pexels Fallback]
+    F --> E
+    E --> G[Upload Assets to GCS]
+    G --> H[Submit Vertex AI GPU Job]
+    H --> I[NVIDIA Tesla T4 Processing]
+    I --> J[Video Rendering & Encoding]
+    J --> K[Store Final Video in GCS]
+    K --> L[Upload to YouTube]
+    L --> M[Success Notification]
     
-    J[Monitoring App] --> K[Track Pipeline Status]
-    J --> L[Health Checks]
-    J --> M[Performance Metrics]
+    N[Monitoring App] --> O[Track All Phases]
+    N --> P[Health Checks]
+    N --> Q[Performance Metrics]
+    N --> R[Error Logging]
     
-    B -.-> J
-    C -.-> J
-    G -.-> J
-    I -.-> J
+    B -.-> N
+    C -.-> N
+    E -.-> N
+    H -.-> N
+    L -.-> N
 ```
 
 ## 🎬 Video Generation Pipeline
 
 ### **Execution Flow**
-1. **Trigger**: Manual execution or scheduled run
-2. **Content Creation**: AI generates story, images, and voiceover
-3. **GPU Processing**: Heavy video rendering with CUDA acceleration
-4. **Publishing**: Automatic upload to YouTube with metadata
-5. **Monitoring**: Real-time status updates via web interface
+1. **Scheduled Trigger**: Automated daily execution at 9 AM EST
+2. **Content Creation**: AI generates story, extracts scenes, creates images and voiceover
+3. **Asset Upload**: All content uploaded to Google Cloud Storage
+4. **GPU Processing**: Vertex AI Custom Job with NVIDIA Tesla T4 acceleration
+5. **Publishing**: Automatic upload to YouTube with generated captions
+6. **Monitoring**: Real-time status updates and comprehensive logging
 
-### **Phase 1: Content Creation**
-1. **Story Generation** - OpenAI GPT-4 creates engaging narratives
-2. **Scene Extraction** - AI identifies key visual moments
-3. **Image Generation** - DALL-E creates consistent visuals
-4. **Voiceover Generation** - ElevenLabs synthesizes natural speech
+### **Phase 1: Content Creation** (Cloud Run)
+1. **Story Generation** - OpenAI GPT-4 creates engaging narratives with scene extraction
+2. **Image Generation** - DALL-E creates visuals with Pexels fallback strategy
+3. **Voiceover Generation** - ElevenLabs synthesizes natural speech
+4. **Asset Upload** - All content uploaded to GCS with retry logic
 
-### **Phase 2: Video Processing** (GPU Jobs)
-5. **GPU Job Submission** - Triggers Vertex AI custom job
-6. **CUDA-Accelerated Rendering** - Hardware-accelerated video creation
-7. **Advanced Encoding** - Optimized for YouTube delivery
-8. **Result Storage** - Secure GCS storage with CDN delivery
+### **Phase 2: Video Processing** (Vertex AI GPU)
+5. **GPU Job Submission** - Triggers Vertex AI custom job with timeout handling
+6. **CUDA-Accelerated Rendering** - Hardware-accelerated video creation on Tesla T4
+7. **Advanced Encoding** - Optimized H.264 encoding for YouTube delivery
+8. **Result Storage** - Final video stored in GCS with CDN delivery
 
-### **Phase 3: Distribution**
-9. **YouTube Upload** - Automated publishing with metadata
-10. **Analytics Tracking** - Performance monitoring and insights
+### **Phase 3: Distribution** (Cloud Run)
+9. **YouTube Upload** - Automated publishing with metadata and captions
+10. **Analytics Tracking** - Performance monitoring and success metrics
+
+### **Intelligent Fallback Strategies**
+- 🖼️ **Image Generation**: DALL-E → Pexels API (when DALL-E fails)
+- 🔄 **Network Timeouts**: Automatic retry with exponential backoff
+- 📊 **Monitoring**: Comprehensive error tracking and alerting
 
 ## 🚀 Quick Start
 
 ### **Prerequisites**
-- Python 3.11+
-- Docker & Docker Compose
-- Google Cloud SDK
-- GitHub account for CI/CD
+- Google Cloud Project with billing enabled
+- GitHub account for automated deployment
+- Required API keys (see below)
 
 ### **Required API Keys**
-- OpenAI API Key (GPT-4 & DALL-E)
-- ElevenLabs API Key (Voice synthesis)
-- YouTube API Credentials (Video upload)
-- Google Cloud Project (Infrastructure)
+- **OpenAI API Key** (GPT-4 & DALL-E) - Story and image generation
+- **ElevenLabs API Key** - Voice synthesis
+- **Pexels API Key** - Image fallback strategy
+- **YouTube API Credentials** - Video upload and publishing
+- **Google Cloud Project** - Infrastructure and GPU processing
 
-### **1. Environment Setup**
+### **1. Repository Setup**
 
 ```bash
-# Clone repository
-git clone https://github.com/rezearcher/AutoVideo.v1.git
-cd AutoVideo.v1
+# Fork and clone the repository
+git clone https://github.com/YOUR_USERNAME/AI-Auto-Video-Generator.git
+cd AI-Auto-Video-Generator
+```
 
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+### **2. Configure GitHub Secrets**
+
+Add these secrets in your GitHub repository settings:
+
+```yaml
+# API Keys
+OPENAI_API_KEY: Your OpenAI API key
+ELEVENLABS_API_KEY: Your ElevenLabs API key  
+PEXELS_API_KEY: Your Pexels API key
+YOUTUBE_CLIENT_ID: YouTube API client ID
+YOUTUBE_CLIENT_SECRET: YouTube API client secret
+YOUTUBE_PROJECT_ID: YouTube API project ID
+
+# Google Cloud
+GOOGLE_CLOUD_PROJECT_ID: Your GCP project ID
+GOOGLE_CLOUD_SA_KEY: Service account JSON key (from setup)
+```
+
+### **3. Automated Deployment**
+
+```bash
+# Simply push to main branch - everything deploys automatically!
+git add .
+git commit -m "feat: Initial deployment"
+git push origin main
+```
+
+This automatically:
+- ✅ Enables all required Google Cloud APIs
+- ✅ Creates GCS buckets for asset storage
+- ✅ Deploys monitoring app to Cloud Run
+- ✅ Builds and deploys Vertex AI GPU container
+- ✅ Sets up daily scheduled video generation
+
+### **4. Monitor Your System**
+
+```bash
+# Check system health
+curl https://YOUR_CLOUD_RUN_URL/health
+
+# Monitor generation progress
+curl https://YOUR_CLOUD_RUN_URL/status
+
+# Manually trigger generation (optional)
+curl -X POST https://YOUR_CLOUD_RUN_URL/generate
+```
+
+## 🔄 Automated Operations
+
+### **Daily Video Generation**
+
+The system runs **completely automatically**:
+
+- ⏰ **9 AM EST Daily**: GitHub Actions triggers video generation
+- 🎬 **Full Pipeline**: Story → Images → Voice → GPU Video → YouTube
+- 📊 **Monitoring**: Real-time status tracking through all phases
+- 🛡️ **Error Handling**: Automatic retries and fallback strategies
+- 💰 **Cost Optimized**: GPU only runs during video processing (~5-10 minutes)
+
+### **Deployment Strategy**
+
+**Main App**: Deploys automatically on every push to `main`
+- Monitoring interface and video generation pipeline
+- Health checks and performance metrics
+- Always available for status monitoring
+
+**GPU Container**: Auto-deploys when GPU-related files change
+- Vertex AI custom job container
+- CUDA-optimized video processing
+- Automatic versioning and rollback capability
+
+### **Zero-Touch Operations**
+
+✅ **Fully Automated**: No manual intervention required  
+✅ **Self-Healing**: Intelligent fallback strategies  
+✅ **Cost-Optimized**: Pay-per-use GPU processing  
+✅ **Comprehensive Monitoring**: Real-time metrics and error reporting  
+✅ **Scheduled Generation**: Daily content creation and publishing
+
+## 📊 Monitoring & Observability
+
+### **Real-Time Pipeline Tracking**
+
+The monitoring system provides complete visibility:
+
+- 📈 **Phase Progress**: Track story → images → voice → video → upload
+- ⏱️ **Timing Metrics**: Duration for each phase and total pipeline time
+- 🚨 **Health Checks**: System health and API connectivity status
+- 📊 **Performance Metrics**: Success rates and resource usage
+- 🔍 **Detailed Logs**: Step-by-step execution with error details
+
+### **Monitoring Endpoints**
+
+```http
+GET  /health              # System health and API connectivity
+GET  /status              # Current pipeline status and phase tracking
+POST /generate            # Manually trigger video generation
+GET  /metrics             # Performance metrics and timing data
+```
+
+### **Example Status Response**
+
+```json
+{
+  "is_generating": true,
+  "is_initialized": true,
+  "timing_metrics": {
+    "current_phase": "video_creation",
+    "current_phase_duration": 304.9,
+    "phase_times": {
+      "story_generation": 33.2,
+      "image_generation": 50.9,
+      "voiceover_generation": 51.7
+    }
+  }
+}
+```
+
+### **Key Metrics Tracked**
+
+- **Pipeline Metrics**: Start/completion times, phase durations, success rates
+- **Resource Metrics**: GPU job duration, storage usage, API response times  
+- **Health Metrics**: System health, API connectivity, error rates
+- **Cost Metrics**: GPU usage time, storage costs, API call counts
+
+## 🛠️ Vertex AI GPU Processing
+
+### **On-Demand GPU Jobs**
+
+The system uses Vertex AI Custom Jobs for cost-effective GPU processing:
+
+```python
+# Automatic GPU job submission with retry logic
+job_id = gpu_service.create_video_job(
+    image_paths=generated_images,
+    audio_path=voiceover_file,
+    story=story_content
+)
+
+# Comprehensive timeout and retry handling
+# Automatic asset upload to GCS
+# Real-time status monitoring
+```
+
+### **GPU Infrastructure**
+
+- **GPU**: NVIDIA Tesla T4 (16GB VRAM) with CUDA 11.8
+- **Machine**: n1-standard-4 (4 vCPU, 15GB RAM)
+- **Storage**: Direct GCS integration with retry logic
+- **Networking**: Private VPC with secure access
+- **Timeout Handling**: 60s for images, 120s for audio uploads
+
+### **Cost Optimization**
+
+| Component | Cost Model | Monthly Estimate |
+|-----------|------------|------------------|
+| Monitoring App (Cloud Run) | Always-on, auto-scaling | ~$15-20 |
+| Vertex AI GPU Jobs | Pay-per-use (5-10 min/day) | ~$15-20 |
+| Storage & Networking | Usage-based | ~$5-10 |
+| **Total** | | **~$35-50** |
+
+**vs. Always-on GPU: ~$250/month (85% cost reduction)**
+
+## 📁 Project Structure
+
+```
+AI-Auto-Video-Generator/
+├── .github/workflows/           # Automated CI/CD
+│   ├── main.yml                # Main app deployment
+│   ├── deploy-vertex-gpu.yml   # GPU container deployment  
+│   └── scheduled-generation.yml # Daily video generation
+├── main.py                     # Video generation pipeline + Flask monitoring
+├── vertex_gpu_service.py       # Vertex AI GPU job management
+├── gpu_worker.py               # GPU processing script (runs in Vertex AI)
+├── story_generator.py          # OpenAI GPT-4 story generation
+├── image_generator.py          # DALL-E + Pexels fallback strategy
+├── voiceover_generator.py      # ElevenLabs voice synthesis
+├── caption_generator.py        # Video caption generation
+├── youtube_uploader.py         # YouTube API integration
+├── Dockerfile                  # Main app container
+├── Dockerfile.gpu              # Vertex AI GPU container
+├── requirements.txt            # Main app dependencies
+├── requirements-gpu.txt        # GPU worker dependencies
+└── output/                     # Generated content (local dev only)
+    ├── audio/                  # Voice files
+    ├── images/                 # Generated images
+    └── videos/                 # Final videos
+```
+
+## 🔧 Development & Testing
+
+### **Local Development**
+
+```bash
+# Clone and setup
+git clone https://github.com/YOUR_USERNAME/AI-Auto-Video-Generator.git
+cd AI-Auto-Video-Generator
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your API keys
-```
+# Add your API keys to .env
 
-### **2. Google Cloud Setup**
+# Test individual components
+python story_generator.py      # Test story generation
+python image_generator.py      # Test image generation with fallback
+python voiceover_generator.py  # Test voice synthesis
 
-```bash
-# Set your project
-gcloud config set project YOUR_PROJECT_ID
-
-# Run automated setup
-./scripts/setup_gcp.sh
-```
-
-This enables all required APIs and configures permissions for:
-- ✅ Cloud Run (monitoring web app)
-- ✅ Vertex AI (GPU jobs)
-- ✅ Cloud Storage (asset management)
-- ✅ Container Registry (image storage)
-- ✅ Cloud Build (CI/CD)
-
-### **3. Local Development**
-
-```bash
-# Run video generation pipeline
+# Run full pipeline (requires GPU container deployed)
 python main.py
-
-# Or run with monitoring (Flask app)
-python main.py --monitor
-
-# Or with Docker
-docker build -t autovideo .
-docker run --env-file .env -p 8080:8080 autovideo
 ```
 
-### **4. GPU Container Setup**
+### **Testing Strategies**
 
 ```bash
-# Build and deploy GPU container (one-time setup)
-./build-gpu-container.sh
+# Test API endpoints
+curl http://localhost:8080/health
+curl http://localhost:8080/status
+
+# Test image fallback strategy
+# (Remove OPENAI_API_KEY temporarily to test Pexels fallback)
+
+# Monitor logs during development
+gcloud logging read 'resource.type="cloud_run_revision"' --limit=50
 ```
 
-This creates the NVIDIA CUDA container for Vertex AI jobs.
+## 🚀 Current Status & Roadmap
 
-## 🔄 Deployment & Execution
-
-### **Deployment Strategy**
-
-**Monitoring App**: Deploys automatically on every push to `main`
-- Provides real-time status during video generation
-- Health checks and performance monitoring
-- Always available for pipeline visibility
-
-**GPU Container**: Deploy manually when GPU code changes
-```bash
-./build-gpu-container.sh
-```
-
-### **Execution Methods**
-
-#### **1. Manual Execution**
-```bash
-# Generate video locally
-python main.py
-
-# Trigger via monitoring API
-curl -X POST https://av-app-u6sfbxnveq-uc.a.run.app/generate
-```
-
-#### **2. Scheduled Execution** (Recommended)
-```yaml
-# Add to .github/workflows/scheduled-generation.yml
-name: Daily Video Generation
-on:
-  schedule:
-    - cron: '0 9 * * *'  # Daily at 9 AM EST
-  workflow_dispatch:
-
-jobs:
-  generate-video:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger Video Generation
-        run: |
-          curl -X POST https://av-app-u6sfbxnveq-uc.a.run.app/generate
-```
-
-#### **3. Cloud Run Jobs** (Alternative)
-```bash
-# Deploy as Cloud Run Job for scheduled execution
-gcloud run jobs create av-video-generator \
-  --image gcr.io/av-8675309/av-app:latest \
-  --region us-central1 \
-  --task-timeout 3600
-```
-
-### **Required GitHub Secrets**
-
-Configure these in your repository settings:
-
-```yaml
-# API Keys
-OPENAI_API_KEY: Your OpenAI API key
-ELEVENLABS_API_KEY: Your ElevenLabs API key
-YOUTUBE_CLIENT_ID: YouTube API client ID
-YOUTUBE_CLIENT_SECRET: YouTube API client secret
-YOUTUBE_PROJECT_ID: YouTube API project ID
-
-# Google Cloud (from setup script)
-GOOGLE_CLOUD_PROJECT_ID: Your GCP project ID
-GOOGLE_CLOUD_SA_KEY: Service account JSON key
-```
-
-## 📊 Monitoring & Observability
-
-### **Real-Time Monitoring**
-
-The Flask monitoring app provides:
-- 📈 **Pipeline Status**: Current generation progress
-- 🚨 **Health Checks**: System health and API connectivity
-- 📊 **Performance Metrics**: Generation times and resource usage
-- 🔍 **Detailed Logs**: Step-by-step pipeline execution
-
-### **Monitoring Endpoints**
-
-```http
-GET  /health              # System health check
-GET  /status              # Current pipeline status
-POST /generate            # Trigger video generation
-GET  /metrics             # Performance metrics
-```
-
-### **Example Monitoring**
-
-```bash
-# Check if system is healthy
-curl https://av-app-u6sfbxnveq-uc.a.run.app/health
-
-# Monitor generation progress
-curl https://av-app-u6sfbxnveq-uc.a.run.app/status
-
-# Trigger new video generation
-curl -X POST https://av-app-u6sfbxnveq-uc.a.run.app/generate
-```
-
-### **Key Metrics Tracked**
-
-```yaml
-Pipeline Metrics:
-  - autovideo/pipeline_started
-  - autovideo/pipeline_completed  
-  - autovideo/pipeline_duration
-  - autovideo/phase_duration
-
-Resource Metrics:
-  - autovideo/images_generated
-  - autovideo/gpu_job_duration
-  - autovideo/storage_usage
-
-Health Metrics:
-  - autovideo/health_check
-  - autovideo/api_response_time
-  - autovideo/error_rate
-```
-
-## 🛠️ GPU Job Implementation
-
-### **Vertex AI Custom Jobs**
-
-The application uses Vertex AI for on-demand GPU processing:
-
-```python
-from vertex_gpu_service import VertexGPUJobService
-
-# Initialize GPU service
-gpu_service = VertexGPUJobService(
-    project_id="your-project-id",
-    region="us-central1"
-)
-
-# Submit GPU job (non-blocking)
-job_id = gpu_service.submit_gpu_job(
-    script=generated_script,
-    voice_settings=voice_config,
-    video_settings=video_config
-)
-
-# Monitor via web interface
-# Check status at /status endpoint
-```
-
-### **GPU Container Specifications**
-
-- **Base Image**: NVIDIA CUDA 11.8 + Ubuntu 20.04
-- **GPU**: NVIDIA Tesla T4 (16GB VRAM)
-- **Machine**: n1-standard-4 (4 vCPU, 15GB RAM)
-- **Storage**: Google Cloud Storage integration
-- **Networking**: Private VPC with secure GCS access
-
-### **Cost Optimization**
-
-| Component | Cost Model | Monthly Estimate |
-|-----------|------------|------------------|
-| Monitoring App (Cloud Run) | Always-on | ~$20 |
-| GPU Worker (Cloud Run) | Auto-scaling | ~$10 |
-| Vertex AI GPU Jobs | Pay-per-use | ~$5-15 |
-| Storage & Networking | Usage-based | ~$10 |
-| **Total** | | **~$45-55** |
-
-*vs. Always-on GPU: ~$250/month*
-
-## 📁 Project Structure
-
-```
-AutoVideo.v1/
-├── .github/workflows/        # GitHub Actions CI/CD
-│   ├── main.yml             # Main app deployment to Cloud Run
-│   ├── deploy-vertex-gpu.yml # Vertex AI GPU container deployment
-│   ├── scheduled-generation.yml # Daily video generation
-│   └── setup-monitoring.yml # Monitoring setup
-├── scripts/                 # Utility scripts
-│   ├── setup_gcp.sh         # GCP environment setup
-│   ├── build-gpu-container.sh # Manual GPU container build
-│   └── setup_monitoring.py # Monitoring configuration
-├── output/                  # Generated content
-│   ├── audio/              # Voice files
-│   ├── images/             # Generated images
-│   ├── videos/             # Final videos
-│   └── logs/               # Application logs
-├── gpu_worker.py            # Vertex AI GPU processing script
-├── vertex_gpu_service.py    # GPU job management service
-├── Dockerfile              # Main app container
-├── Dockerfile.gpu          # Vertex AI GPU container
-├── requirements.txt        # Main app dependencies
-├── requirements-gpu.txt    # GPU worker dependencies
-├── main.py                 # Video generation pipeline + monitoring
-├── story_generator.py      # AI story generation
-├── image_generator.py      # DALL-E image creation
-├── voiceover_generator.py  # ElevenLabs voice synthesis
-├── video_creator.py        # Local video assembly (fallback)
-├── caption_generator.py    # Video caption generation
-└── monitoring-config.yaml  # Monitoring configuration
-```
-
-## 🔄 Automated Deployment
-
-The entire system is fully automated via GitHub Actions:
-
-### **Continuous Integration/Deployment**
-
-1. **Code Push**: Push to `main` branch triggers deployments
-2. **Vertex AI GPU Container**: Auto-builds when GPU-related files change
-3. **Main Application**: Deploys to Cloud Run with latest configuration
-4. **Scheduled Generation**: Runs daily at 9 AM EST automatically
-
-### **Deployment Triggers**
-
-| Workflow | Trigger Files | Action |
-|----------|---------------|---------|
-| `main.yml` | Any code changes | Deploy main app to Cloud Run |
-| `deploy-vertex-gpu.yml` | `gpu_worker.py`, `Dockerfile.gpu`, `requirements-gpu.txt`, `caption_generator.py`, `vertex_gpu_service.py` | Build & deploy GPU container |
-| `scheduled-generation.yml` | Daily cron + manual trigger | Generate and upload video |
-
-### **Zero-Touch Operations**
-
-✅ **Fully Automated**: No manual intervention required  
-✅ **Self-Healing**: Fallback to local processing if GPU fails  
-✅ **Cost-Optimized**: GPU only runs when needed  
-✅ **Monitoring**: Real-time metrics and error reporting  
-
-## 🔧 Development
-
-### **Local Testing**
-
-```bash
-# Run video generation pipeline
-python main.py
-
-# Run API tests
-python test_api.py
-
-# Test GPU container locally (requires NVIDIA Docker)
-docker run --gpus all -it gcr.io/av-8675309/av-gpu-job:latest
-
-# Monitor workflows
-./scripts/monitor_workflow.sh
-```
-
-### **Code Quality**
-
-```bash
-# Format code
-black .
-flake8 .
-
-# Type checking
-mypy .
-
-# Run tests
-pytest
-```
-
-## 🚀 Roadmap
-
-### **V1 (Current)** ✅
-- ✅ Automated video generation pipeline
-- ✅ GPU-accelerated processing
-- ✅ YouTube integration
-- ✅ Real-time monitoring interface
-- ✅ Cost-optimized architecture
+### **V1 (Current - Production Ready)** ✅
+- ✅ Fully automated daily video generation
+- ✅ Vertex AI GPU-accelerated processing  
+- ✅ Intelligent image fallback (DALL-E → Pexels)
+- ✅ Comprehensive monitoring and error handling
+- ✅ YouTube integration with automatic uploads
+- ✅ Cost-optimized architecture (85% cost reduction)
+- ✅ Zero-touch operations with GitHub Actions
 
 ### **V2 (Q2 2025)**
-- 🎯 Scheduled daily/weekly generation
-- 🎯 Advanced video editing (scene analysis, dynamic pacing)
-- 🎯 Multi-platform publishing (TikTok, Instagram)
+- 🎯 Advanced video editing (dynamic pacing, scene transitions)
+- 🎯 Multi-platform publishing (TikTok, Instagram, Twitter)
 - 🎯 Trend detection and viral content optimization
-- 🎯 Custom voice cloning
+- 🎯 Custom voice cloning and multiple voice options
+- 🎯 A/B testing for content optimization
 
 ### **V3 (Q4 2025)**
-- 🎯 Real-time trend scraping
-- 🎯 A/B testing for content optimization
-- 🎯 Multi-language support
-- 🎯 Advanced AI editing with scene transitions
+- 🎯 Real-time trend scraping and content adaptation
+- 🎯 Multi-language support with localized content
+- 🎯 Advanced AI editing with automatic scene analysis
 - 🎯 Revenue optimization algorithms
+- 🎯 Creator collaboration features
 
 ## 🛡️ Security & Best Practices
 
 ### **Security Features**
-- 🔐 Workload Identity Federation (no service account keys)
-- 🔒 Encrypted secrets management
-- 🛡️ Private container registry
-- 🌐 VPC-native networking
-- 📝 Comprehensive audit logging
+- 🔐 Workload Identity Federation (no service account keys in code)
+- 🔒 GitHub Secrets for sensitive API keys
+- 🛡️ Private container registry with automatic scanning
+- 🌐 VPC-native networking with secure GCS access
+- 📝 Comprehensive audit logging and monitoring
 
-### **Best Practices**
-- ♻️ Immutable infrastructure
-- 🔄 Blue-green deployments
-- 📊 Comprehensive monitoring
-- 🧪 Automated testing
-- 💰 Cost optimization
+### **Operational Best Practices**
+- ♻️ Immutable infrastructure with automated deployments
+- 🔄 Blue-green deployments with automatic rollback
+- 📊 Comprehensive monitoring with real-time alerting
+- 🧪 Automated testing and validation
+- 💰 Cost optimization with pay-per-use resources
+- 🛡️ Intelligent fallback strategies for reliability
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+3. Test your changes locally
+4. Commit changes (`git commit -m 'Add amazing feature'`)
+5. Push to branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
+
+The automated deployment pipeline will handle testing and deployment.
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## ✨ Demo Examples
-
-[![Example Video 1](https://img.youtube.com/vi/hV4t2yW-RUk/0.jpg)](https://www.youtube.com/watch?v=hV4t2yW-RUk)
-[![Example Video 2](https://img.youtube.com/vi/Vzcras5Snyo/0.jpg)](https://www.youtube.com/watch?v=Vzcras5Snyo)
 
 ---
 
@@ -485,19 +420,20 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Rez E. Archer**  
 DevOps Architect | Full Stack Developer | AI Infrastructure Specialist
 
-- 🌐 [probably.ninja](https://probably.ninja) (coming soon)
 - 📧 Contact via GitHub Issues
+- 🌐 Built with ❤️ for automated content creation
 
 ---
 
 ## 🙏 Acknowledgments
 
-- OpenAI for GPT-4 and DALL-E APIs
-- ElevenLabs for voice synthesis technology
-- Google Cloud for robust infrastructure
-- NVIDIA for CUDA GPU acceleration
-- The open-source community for foundational tools
+- **OpenAI** for GPT-4 and DALL-E APIs
+- **ElevenLabs** for voice synthesis technology  
+- **Pexels** for reliable image fallback strategy
+- **Google Cloud** for robust Vertex AI infrastructure
+- **NVIDIA** for CUDA GPU acceleration
+- **YouTube** for content distribution platform
 
 ---
 
-*Built with ❤️ for creators who want to scale their content production with AI*
+*Fully automated AI video generation - from story to YouTube upload, every single day* 🎬✨

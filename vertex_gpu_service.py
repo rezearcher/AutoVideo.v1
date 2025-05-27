@@ -194,13 +194,19 @@ class VertexGPUJobService:
     def create_video_job(self, image_paths: List[str], audio_path: str, story: str) -> str:
         """Create a video job from images, audio, and story"""
         try:
+            logger.info("🔧 Starting video job creation...")
+            
             # Generate unique job ID
             job_id = f"video-job-{uuid.uuid4().hex[:8]}"
+            logger.info(f"📋 Generated job ID: {job_id}")
             
             # Upload assets to GCS
+            logger.info("📤 Uploading assets to GCS...")
             asset_urls = self.upload_assets_to_gcs(job_id, image_paths, audio_path)
+            logger.info(f"✅ Assets uploaded: {list(asset_urls.keys())}")
             
             # Prepare job data
+            logger.info("📝 Preparing job configuration...")
             job_data = {
                 "job_id": job_id,
                 "script": story,
@@ -211,42 +217,58 @@ class VertexGPUJobService:
             }
             
             # Upload job configuration to GCS
+            logger.info("📋 Uploading job config to GCS...")
             self.create_job_config(job_id, job_data)
+            logger.info("✅ Job config uploaded")
             
             # Submit the job
-            job = aiplatform.CustomJob(
-                display_name=f"av-gpu-job-{job_id}",
-                worker_pool_specs=[
-                    {
-                        "machine_spec": {
-                            "machine_type": self.machine_type,
-                            "accelerator_type": self.accelerator_type,
-                            "accelerator_count": self.accelerator_count,
-                        },
-                        "replica_count": 1,
-                        "container_spec": {
-                            "image_uri": self.container_image,
-                            "args": [
-                                "--job-id", job_id,
-                                "--project-id", self.project_id,
-                                "--bucket-name", self.bucket_name
-                            ],
-                            "env": [
-                                {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
-                            ]
-                        },
-                    }
-                ]
-            )
-            
-            # Start the job asynchronously
-            job.run(sync=False)
-            
-            logger.info(f"Submitted video creation job: {job_id}")
-            return job_id
+            logger.info("🚀 Creating Vertex AI CustomJob...")
+            try:
+                job = aiplatform.CustomJob(
+                    display_name=f"av-gpu-job-{job_id}",
+                    worker_pool_specs=[
+                        {
+                            "machine_spec": {
+                                "machine_type": self.machine_type,
+                                "accelerator_type": self.accelerator_type,
+                                "accelerator_count": self.accelerator_count,
+                            },
+                            "replica_count": 1,
+                            "container_spec": {
+                                "image_uri": self.container_image,
+                                "args": [
+                                    "--job-id", job_id,
+                                    "--project-id", self.project_id,
+                                    "--bucket-name", self.bucket_name
+                                ],
+                                "env": [
+                                    {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
+                                ]
+                            },
+                        }
+                    ]
+                )
+                logger.info("✅ CustomJob object created")
+                
+                # Start the job asynchronously
+                logger.info("🎬 Starting job execution...")
+                job.run(sync=False)
+                logger.info(f"🎉 Successfully submitted video creation job: {job_id}")
+                
+                return job_id
+                
+            except Exception as vertex_error:
+                logger.error(f"❌ Vertex AI job submission failed: {vertex_error}")
+                logger.error(f"❌ Error type: {type(vertex_error).__name__}")
+                logger.error(f"❌ Error details: {str(vertex_error)}")
+                raise
             
         except Exception as e:
-            logger.error(f"Failed to create video job: {e}")
+            logger.error(f"❌ Failed to create video job: {e}")
+            logger.error(f"❌ Error type: {type(e).__name__}")
+            logger.error(f"❌ Error details: {str(e)}")
+            import traceback
+            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
             raise
     
     def get_job_status(self, job_id: str) -> Dict[str, Any]:

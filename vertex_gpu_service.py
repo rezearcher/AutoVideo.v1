@@ -21,8 +21,8 @@ class VertexGPUJobService:
             
             self.project_id = project_id
             self.region = region
-            # Use the correct existing bucket name instead of generating from project_id
-            self.bucket_name = bucket_name or "av-8675309-video-jobs"
+            # Use environment variable for bucket name to avoid hardcoding sensitive info
+            self.bucket_name = bucket_name or os.getenv('VERTEX_BUCKET_NAME', f"{project_id}-video-jobs")
             
             logger.info(f"📋 Project: {self.project_id}, Region: {self.region}, Bucket: {self.bucket_name}")
             

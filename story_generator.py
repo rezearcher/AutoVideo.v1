@@ -21,7 +21,7 @@ def get_openai_client():
         if not api_key:
             raise ValueError("OPENAI_API_KEY environment variable is not set")
         
-        # Create a custom HTTP client with better timeout and retry settings
+        # Create a custom HTTP client with better timeout settings
         http_client = httpx.Client(
             timeout=httpx.Timeout(
                 connect=10.0,  # 10 seconds to establish connection
@@ -33,8 +33,7 @@ def get_openai_client():
                 max_keepalive_connections=5,
                 max_connections=10,
                 keepalive_expiry=30.0
-            ),
-            retries=3  # Built-in retry for connection issues
+            )
         )
         
         client = OpenAI(

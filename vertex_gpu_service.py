@@ -38,7 +38,7 @@ class VertexGPUJobService:
         self.accelerator_count = 1
     
     def upload_assets_to_gcs(self, job_id: str, image_paths: List[str], audio_path: str) -> Dict[str, Any]:
-        """Upload images and audio to GCS"""
+        """Upload images and audio to GCS with retry logic"""
         try:
             logger.info(f"Uploading assets to GCS for job {job_id}")
             
@@ -50,8 +50,25 @@ class VertexGPUJobService:
                     blob_name = f"jobs/{job_id}/images/image_{i}.png"
                     blob = self.bucket.blob(blob_name)
                     
-                    with open(image_path, 'rb') as image_file:
-                        blob.upload_from_file(image_file, content_type='image/png')
+                    # Set timeout for upload
+                    blob._chunk_size = 1024 * 1024  # 1MB chunks
+                    
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            with open(image_path, 'rb') as image_file:
+                                blob.upload_from_file(
+                                    image_file, 
+                                    content_type='image/png',
+                                    timeout=60  # 60 second timeout
+                                )
+                            break
+                        except Exception as e:
+                            if attempt == max_retries - 1:
+                                logger.error(f"Failed to upload image {i} after {max_retries} attempts: {e}")
+                                raise
+                            logger.warning(f"Upload attempt {attempt + 1} failed for image {i}, retrying: {e}")
+                            time.sleep(2 ** attempt)  # Exponential backoff
                     
                     image_url = f"gs://{self.bucket_name}/{blob_name}"
                     asset_urls["image_urls"].append(image_url)
@@ -59,13 +76,30 @@ class VertexGPUJobService:
                 else:
                     logger.warning(f"Image file not found: {image_path}")
             
-            # Upload audio
+            # Upload audio with retry logic
             if os.path.exists(audio_path):
                 blob_name = f"jobs/{job_id}/audio/audio.mp3"
                 blob = self.bucket.blob(blob_name)
                 
-                with open(audio_path, 'rb') as audio_file:
-                    blob.upload_from_file(audio_file, content_type='audio/mpeg')
+                # Set chunk size for large files
+                blob._chunk_size = 1024 * 1024  # 1MB chunks
+                
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        with open(audio_path, 'rb') as audio_file:
+                            blob.upload_from_file(
+                                audio_file, 
+                                content_type='audio/mpeg',
+                                timeout=120  # 2 minute timeout for audio
+                            )
+                        break
+                    except Exception as e:
+                        if attempt == max_retries - 1:
+                            logger.error(f"Failed to upload audio after {max_retries} attempts: {e}")
+                            raise
+                        logger.warning(f"Upload attempt {attempt + 1} failed for audio, retrying: {e}")
+                        time.sleep(2 ** attempt)  # Exponential backoff
                 
                 asset_urls["audio_url"] = f"gs://{self.bucket_name}/{blob_name}"
                 logger.info(f"Uploaded audio: {asset_urls['audio_url']}")

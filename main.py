@@ -299,6 +299,11 @@ def generate_video_batch():
         try:
             logger.info("🚀 Attempting video creation with Vertex AI GPU...")
             
+            # Debug: Log the paths being passed
+            logger.info(f"📁 Image paths: {image_paths}")
+            logger.info(f"🎵 Audio path: {audio_path}")
+            logger.info(f"📝 Story length: {len(story)} characters")
+            
             # Use Vertex AI GPU service
             from vertex_gpu_service import VertexGPUJobService
             
@@ -446,6 +451,11 @@ def generate_video_thread():
         # Try GPU worker first
         try:
             logger.info("🚀 Attempting video creation with Vertex AI GPU...")
+            
+            # Debug: Log the paths being passed
+            logger.info(f"📁 Image paths: {image_paths}")
+            logger.info(f"🎵 Audio path: {audio_path}")
+            logger.info(f"📝 Story length: {len(story)} characters")
             
             # Use Vertex AI GPU service
             from vertex_gpu_service import VertexGPUJobService

@@ -148,6 +148,31 @@ def initialize_app():
             logger.warning("GOOGLE_CLOUD_PROJECT environment variable not set. Some features may not work.")
             return False
         
+        # Validate OpenAI API key
+        logger.info("Validating OpenAI API key...")
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if not openai_key:
+            logger.critical("OPENAI_API_KEY is missing! Video generation will fail.")
+            return False
+        elif len(openai_key) < 20:  # Basic sanity check
+            logger.critical(f"OPENAI_API_KEY appears invalid (length={len(openai_key)}). Expected longer key.")
+            return False
+        else:
+            logger.info(f"OPENAI_API_KEY loaded successfully (length={len(openai_key)})")
+        
+        # Validate other critical API keys
+        elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
+        if not elevenlabs_key:
+            logger.warning("ELEVENLABS_API_KEY is missing! Voice generation may fail.")
+        else:
+            logger.info(f"ELEVENLABS_API_KEY loaded (length={len(elevenlabs_key)})")
+            
+        pexels_key = os.getenv("PEXELS_API_KEY")
+        if not pexels_key:
+            logger.warning("PEXELS_API_KEY is missing! Image fallback may fail.")
+        else:
+            logger.info(f"PEXELS_API_KEY loaded (length={len(pexels_key)})")
+        
         logger.info(f"Application initialized successfully with project: {project_id}")
         return True
     except Exception as e:
@@ -165,6 +190,39 @@ def health_check():
         report_error(e, "health_check")
         send_custom_metric("health_check", 0.0, {"status": "unhealthy"})
         return jsonify({"status": "unhealthy", "error": str(e)}), 500
+
+@app.route('/health/openai')
+def openai_health_check():
+    """OpenAI API health check endpoint."""
+    try:
+        import openai
+        
+        # Set the API key
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if not openai_key:
+            return jsonify({"status": "error", "error": "OPENAI_API_KEY not found"}), 500
+        
+        # Test OpenAI API connectivity
+        logger.info("Testing OpenAI API connectivity...")
+        client = openai.OpenAI(api_key=openai_key)
+        
+        # Simple API test - list models (lightweight call)
+        models = client.models.list()
+        model_count = len(list(models))
+        
+        logger.info(f"OpenAI API test successful - {model_count} models available")
+        send_custom_metric("openai_health_check", 1.0, {"status": "healthy"})
+        
+        return jsonify({
+            "status": "ok", 
+            "models_count": model_count,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"OpenAI health check failed: {e}", exc_info=True)
+        send_custom_metric("openai_health_check", 0.0, {"status": "error"})
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 @app.route('/status')
 def status():

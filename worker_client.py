@@ -71,3 +71,21 @@ class WorkerClient:
         except Exception as e:
             logger.error(f"Error processing video: {e}")
             return False 
+
+    def create_video(self, image_paths: List[str], audio_path: str, story: str, timestamp: str, output_path: str) -> str:
+        """Create video using the GPU worker - matches the expected interface."""
+        try:
+            logger.info(f"Creating video with GPU worker at {self.worker_url}")
+            
+            # Use the process_video method
+            success = self.process_video(image_paths, output_path, audio_path)
+            
+            if success:
+                logger.info(f"Video created successfully at {output_path}")
+                return output_path
+            else:
+                raise Exception("GPU worker video processing failed")
+                
+        except Exception as e:
+            logger.error(f"Error in create_video: {e}")
+            raise 

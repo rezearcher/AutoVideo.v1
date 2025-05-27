@@ -278,7 +278,15 @@ def generate_video_thread():
         # Try GPU worker first
         try:
             logger.info("Attempting video creation with GPU worker...")
-            worker_client = WorkerClient()
+            
+            # Get the worker URL first
+            project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'autovideo-442318')
+            worker_url = WorkerClient.create_worker(project_id)
+            
+            if not worker_url:
+                raise Exception("Could not get GPU worker URL")
+            
+            worker_client = WorkerClient(worker_url)
             video_path = worker_client.create_video(image_paths, audio_path, story, timestamp, output_path)
             logger.info("Video created successfully using GPU worker")
             send_custom_metric("video_creation_method", 1.0, {"method": "gpu_worker"})

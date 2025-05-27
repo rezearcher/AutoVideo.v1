@@ -59,6 +59,5 @@ jobs:
           --concurrency=1
           --timeout=600s
           --set-env-vars=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
-          --use-http2
           --port=8000
           --allow-unauthenticated 

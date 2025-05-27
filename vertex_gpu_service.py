@@ -16,26 +16,47 @@ logger = logging.getLogger(__name__)
 
 class VertexGPUJobService:
     def __init__(self, project_id: str, region: str = "us-central1", bucket_name: str = None):
-        self.project_id = project_id
-        self.region = region
-        self.bucket_name = bucket_name or f"{project_id}-video-jobs"
-        
-        # Initialize Vertex AI with staging bucket
-        aiplatform.init(
-            project=project_id, 
-            location=region,
-            staging_bucket=f"gs://{self.bucket_name}"
-        )
-        
-        # Initialize Storage client
-        self.storage_client = storage.Client(project=project_id)
-        self.bucket = self.storage_client.bucket(self.bucket_name)
-        
-        # GPU job configuration
-        self.container_image = f"gcr.io/{project_id}/av-gpu-job"
-        self.machine_type = "n1-standard-4"
-        self.accelerator_type = "NVIDIA_TESLA_T4"
-        self.accelerator_count = 1
+        try:
+            logger.info("🔧 Initializing VertexGPUJobService...")
+            
+            self.project_id = project_id
+            self.region = region
+            # Use the correct existing bucket name instead of generating from project_id
+            self.bucket_name = bucket_name or "av-8675309-video-jobs"
+            
+            logger.info(f"📋 Project: {self.project_id}, Region: {self.region}, Bucket: {self.bucket_name}")
+            
+            # Initialize Vertex AI with staging bucket
+            logger.info("🚀 Initializing Vertex AI...")
+            aiplatform.init(
+                project=project_id, 
+                location=region,
+                staging_bucket=f"gs://{self.bucket_name}"
+            )
+            logger.info("✅ Vertex AI initialized successfully")
+            
+            # Initialize Storage client
+            logger.info("💾 Initializing GCS client...")
+            self.storage_client = storage.Client(project=project_id)
+            self.bucket = self.storage_client.bucket(self.bucket_name)
+            logger.info("✅ GCS client initialized successfully")
+            
+            # GPU job configuration
+            self.container_image = f"gcr.io/{project_id}/av-gpu-job"
+            self.machine_type = "n1-standard-4"
+            self.accelerator_type = "NVIDIA_TESLA_T4"
+            self.accelerator_count = 1
+            
+            logger.info(f"🎯 GPU config: {self.container_image}, {self.machine_type}, {self.accelerator_type}")
+            logger.info("✅ VertexGPUJobService initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize VertexGPUJobService: {e}")
+            logger.error(f"❌ Error type: {type(e).__name__}")
+            logger.error(f"❌ Error details: {str(e)}")
+            import traceback
+            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+            raise
     
     def upload_assets_to_gcs(self, job_id: str, image_paths: List[str], audio_path: str) -> Dict[str, Any]:
         """Upload images and audio to GCS with retry logic"""

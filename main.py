@@ -7,11 +7,12 @@ from story_generator import generate_story, extract_image_prompts, get_openai_cl
 from image_generator import generate_images
 from voiceover_generator import generate_voiceover
 from youtube_uploader import upload_video
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 import time
 from timing_metrics import TimingMetrics
 from topic_manager import TopicManager
+from collections import defaultdict
 
 # Optional import for local video processing fallback
 try:
@@ -68,6 +69,11 @@ if CLOUD_MONITORING_AVAILABLE:
         logger.info("Google Cloud Monitoring clients initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize monitoring clients: {e}")
+
+# Rate limiting storage (in-memory for simplicity)
+request_counts = defaultdict(list)
+RATE_LIMIT_WINDOW = 300  # 5 minutes
+RATE_LIMIT_MAX_REQUESTS = 10  # Max requests per window
 
 def send_custom_metric(metric_name: str, value: float, labels: dict = None):
     """Send a custom metric to Google Cloud Monitoring."""
@@ -127,6 +133,51 @@ def report_error(error: Exception, context: str = None):
     
     # Always log the error locally as well
     logger.error(f"Error in {context}: {error}", exc_info=True)
+
+def check_rate_limit(client_ip: str) -> bool:
+    """Check if client IP is within rate limits."""
+    now = datetime.now()
+    cutoff = now - timedelta(seconds=RATE_LIMIT_WINDOW)
+    
+    # Clean old requests
+    request_counts[client_ip] = [
+        req_time for req_time in request_counts[client_ip] 
+        if req_time > cutoff
+    ]
+    
+    # Check if under limit
+    if len(request_counts[client_ip]) >= RATE_LIMIT_MAX_REQUESTS:
+        logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+        send_custom_metric("rate_limit_exceeded", 1.0, {"client_ip": client_ip})
+        return False
+    
+    # Add current request
+    request_counts[client_ip].append(now)
+    return True
+
+def log_api_call(api_name: str, success: bool, duration: float = None):
+    """Log external API calls for monitoring."""
+    logger.info(f"API Call: {api_name} - Success: {success} - Duration: {duration}s")
+    send_custom_metric("external_api_call", 1.0, {
+        "api": api_name,
+        "success": str(success),
+        "duration": str(duration) if duration else "unknown"
+    })
+
+@app.before_request
+def before_request():
+    """Apply rate limiting to all requests."""
+    client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+    
+    # Skip rate limiting for health checks
+    if request.path in ['/health', '/health/openai']:
+        return
+    
+    if not check_rate_limit(client_ip):
+        return jsonify({
+            "error": "Rate limit exceeded",
+            "message": f"Maximum {RATE_LIMIT_MAX_REQUESTS} requests per {RATE_LIMIT_WINDOW} seconds"
+        }), 429
 
 def initialize_app():
     """Initialize the application and check required environment variables."""

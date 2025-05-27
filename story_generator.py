@@ -63,21 +63,45 @@ def call_openai_with_backoff(max_retries=3, max_time=60, **kwargs):
     for attempt in range(max_retries):
         # Check if we've exceeded the total time limit
         if time.time() - start_time > max_time:
+            duration = time.time() - start_time
+            logging.error(f"OpenAI API call timed out after {max_time} seconds (actual: {duration:.1f}s)")
             raise Exception(f"OpenAI API call timed out after {max_time} seconds")
         
         try:
             client = get_openai_client()
             logging.info(f"OpenAI API call attempt {attempt + 1}/{max_retries}")
             
+            call_start = time.time()
             response = client.chat.completions.create(**kwargs)
-            logging.info(f"OpenAI API call successful on attempt {attempt + 1}")
+            call_duration = time.time() - call_start
+            
+            logging.info(f"OpenAI API call successful on attempt {attempt + 1} (duration: {call_duration:.2f}s)")
+            
+            # Log successful API call for monitoring
+            try:
+                # Try to import the logging function, but don't fail if not available
+                from main import log_api_call
+                log_api_call("openai", True, call_duration)
+            except ImportError:
+                pass  # main.py not available (e.g., during testing)
+            
             return response
             
         except Exception as e:
-            logging.warning(f"OpenAI API call attempt {attempt + 1} failed: {str(e)}")
+            call_duration = time.time() - start_time
+            logging.warning(f"OpenAI API call attempt {attempt + 1} failed after {call_duration:.2f}s: {str(e)}")
+            
+            # Log failed API call for monitoring
+            try:
+                from main import log_api_call
+                log_api_call("openai", False, call_duration)
+            except ImportError:
+                pass
             
             # Don't retry on the last attempt
             if attempt == max_retries - 1:
+                total_duration = time.time() - start_time
+                logging.error(f"OpenAI API failed after {max_retries} attempts (total duration: {total_duration:.2f}s)")
                 raise Exception(f"OpenAI API failed after {max_retries} attempts: {str(e)}")
             
             # Calculate exponential backoff with jitter

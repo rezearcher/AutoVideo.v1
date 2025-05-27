@@ -93,5 +93,4 @@ jobs:
           --use-http2
           --port=8080
           --no-allow-unauthenticated
-          --vpc-egress=all-traffic
-          --clear-network 
+          --vpc-egress=all-traffic 

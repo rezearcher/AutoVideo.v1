@@ -20,8 +20,12 @@ class VertexGPUJobService:
         self.region = region
         self.bucket_name = bucket_name or f"{project_id}-video-jobs"
         
-        # Initialize Vertex AI
-        aiplatform.init(project=project_id, location=region)
+        # Initialize Vertex AI with staging bucket
+        aiplatform.init(
+            project=project_id, 
+            location=region,
+            staging_bucket=f"gs://{self.bucket_name}"
+        )
         
         # Initialize Storage client
         self.storage_client = storage.Client(project=project_id)

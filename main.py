@@ -274,6 +274,39 @@ def openai_health_check():
         send_custom_metric("openai_health_check", 0.0, {"status": "error"})
         return jsonify({"status": "error", "error": str(e)}), 500
 
+@app.route('/health/vertex-ai')
+def health_check_vertex_ai():
+    """Test Vertex AI connectivity through PSC endpoint"""
+    try:
+        from google.cloud import aiplatform
+        from google.cloud.aiplatform_v1.services.job_service import JobServiceClient
+        
+        # Initialize Vertex AI
+        aiplatform.init(project=PROJECT_ID, location=LOCATION)
+        
+        # Test connection by listing custom jobs (should work even if empty)
+        client = JobServiceClient()
+        parent = f"projects/{PROJECT_ID}/locations/{LOCATION}"
+        
+        # This will test the actual connection to Vertex AI
+        response = client.list_custom_jobs(parent=parent, page_size=1)
+        
+        return jsonify({
+            'status': 'healthy',
+            'vertex_ai': 'connected',
+            'message': 'Vertex AI accessible through PSC endpoint',
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Vertex AI health check failed: {str(e)}")
+        return jsonify({
+            'status': 'unhealthy',
+            'vertex_ai': 'failed',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
 @app.route('/status')
 def status():
     """Get the current status of video generation."""

@@ -43,11 +43,15 @@ def generate_image(prompt, output_path):
         logging.info(f"Organization ID: {os.getenv('OPENAI_ORG_ID')[:5]}...{os.getenv('OPENAI_ORG_ID')[-5:]}")
         
         # Make the API call
+        logging.info(f"Making OpenAI API call for prompt: {prompt[:100]}...")
         response = client.images.generate(
             prompt=prompt,
             n=1,
             size="1024x1024"
         )
+        
+        logging.info(f"OpenAI API response type: {type(response)}")
+        logging.info(f"OpenAI API response: {response}")
         
         # Validate the response
         if response is None:
@@ -78,6 +82,8 @@ def generate_image(prompt, output_path):
         
     except Exception as e:
         logging.error(f"Error generating image: {str(e)}")
+        logging.error(f"Exception type: {type(e)}")
+        logging.error(f"Exception details: {repr(e)}")
         raise
 
 def generate_images(prompts, output_dir):

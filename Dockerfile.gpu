@@ -6,12 +6,14 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     ffmpeg \
     git \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
     && ln -s /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and install Python dependencies
-COPY requirements-worker.txt .
-RUN pip install --upgrade pip && pip install -r requirements-worker.txt
+COPY requirements-gpu.txt .
+RUN pip install --upgrade pip && pip install -r requirements-gpu.txt
 
 # Install additional dependencies for Vertex AI
 RUN pip install google-cloud-storage google-cloud-aiplatform
@@ -19,6 +21,9 @@ RUN pip install google-cloud-storage google-cloud-aiplatform
 # Copy application code
 COPY . /app
 WORKDIR /app
+
+# Copy caption generator
+COPY caption_generator.py /app/
 
 # Set environment variables
 ENV PYTHONPATH=/app

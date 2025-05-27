@@ -7,7 +7,7 @@ import os
 import json
 import uuid
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from google.cloud import aiplatform
 from google.cloud import storage
 import time
@@ -33,6 +33,47 @@ class VertexGPUJobService:
         self.accelerator_type = "NVIDIA_TESLA_T4"
         self.accelerator_count = 1
     
+    def upload_assets_to_gcs(self, job_id: str, image_paths: List[str], audio_path: str) -> Dict[str, Any]:
+        """Upload images and audio to GCS"""
+        try:
+            logger.info(f"Uploading assets to GCS for job {job_id}")
+            
+            asset_urls = {"image_urls": [], "audio_url": ""}
+            
+            # Upload images
+            for i, image_path in enumerate(image_paths):
+                if os.path.exists(image_path):
+                    blob_name = f"jobs/{job_id}/images/image_{i}.png"
+                    blob = self.bucket.blob(blob_name)
+                    
+                    with open(image_path, 'rb') as image_file:
+                        blob.upload_from_file(image_file, content_type='image/png')
+                    
+                    image_url = f"gs://{self.bucket_name}/{blob_name}"
+                    asset_urls["image_urls"].append(image_url)
+                    logger.info(f"Uploaded image {i}: {image_url}")
+                else:
+                    logger.warning(f"Image file not found: {image_path}")
+            
+            # Upload audio
+            if os.path.exists(audio_path):
+                blob_name = f"jobs/{job_id}/audio/audio.mp3"
+                blob = self.bucket.blob(blob_name)
+                
+                with open(audio_path, 'rb') as audio_file:
+                    blob.upload_from_file(audio_file, content_type='audio/mpeg')
+                
+                asset_urls["audio_url"] = f"gs://{self.bucket_name}/{blob_name}"
+                logger.info(f"Uploaded audio: {asset_urls['audio_url']}")
+            else:
+                logger.warning(f"Audio file not found: {audio_path}")
+            
+            return asset_urls
+            
+        except Exception as e:
+            logger.error(f"Failed to upload assets to GCS: {e}")
+            raise
+    
     def create_job_config(self, job_id: str, job_data: Dict[str, Any]) -> str:
         """Upload job configuration to GCS"""
         try:
@@ -52,7 +93,8 @@ class VertexGPUJobService:
             raise
     
     def submit_gpu_job(self, script: str, voice_settings: Dict[str, Any], 
-                      video_settings: Dict[str, Any]) -> str:
+                      video_settings: Dict[str, Any], image_paths: List[str] = None, 
+                      audio_path: str = None) -> str:
         """Submit a new GPU video processing job"""
         try:
             # Generate unique job ID
@@ -67,49 +109,37 @@ class VertexGPUJobService:
                 "created_at": time.time()
             }
             
+            # Upload assets if provided
+            if image_paths and audio_path:
+                asset_urls = self.upload_assets_to_gcs(job_id, image_paths, audio_path)
+                job_data.update(asset_urls)
+            
             # Upload job configuration to GCS
             self.create_job_config(job_id, job_data)
             
-            # Create Vertex AI Custom Job
-            job_spec = {
-                "display_name": f"av-gpu-job-{job_id}",
-                "job_spec": {
-                    "worker_pool_specs": [
-                        {
-                            "machine_spec": {
-                                "machine_type": self.machine_type,
-                                "accelerator_type": self.accelerator_type,
-                                "accelerator_count": self.accelerator_count,
-                            },
-                            "replica_count": 1,
-                            "container_spec": {
-                                "image_uri": self.container_image,
-                                "args": [
-                                    "--job-id", job_id,
-                                    "--project-id", self.project_id,
-                                    "--bucket-name", self.bucket_name
-                                ],
-                                "env": [
-                                    {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
-                                ]
-                            },
-                        }
-                    ]
-                }
-            }
-            
-            # Submit the job
-            job = aiplatform.CustomJob.from_local_script(
+            # Submit the job using the simpler CustomJob API
+            job = aiplatform.CustomJob(
                 display_name=f"av-gpu-job-{job_id}",
-                script_path="gpu_worker.py",
-                container_uri=self.container_image,
-                machine_type=self.machine_type,
-                accelerator_type=self.accelerator_type,
-                accelerator_count=self.accelerator_count,
-                args=[
-                    "--job-id", job_id,
-                    "--project-id", self.project_id,
-                    "--bucket-name", self.bucket_name
+                worker_pool_specs=[
+                    {
+                        "machine_spec": {
+                            "machine_type": self.machine_type,
+                            "accelerator_type": self.accelerator_type,
+                            "accelerator_count": self.accelerator_count,
+                        },
+                        "replica_count": 1,
+                        "container_spec": {
+                            "image_uri": self.container_image,
+                            "args": [
+                                "--job-id", job_id,
+                                "--project-id", self.project_id,
+                                "--bucket-name", self.bucket_name
+                            ],
+                            "env": [
+                                {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
+                            ]
+                        },
+                    }
                 ]
             )
             
@@ -121,6 +151,64 @@ class VertexGPUJobService:
             
         except Exception as e:
             logger.error(f"Failed to submit GPU job: {e}")
+            raise
+    
+    def create_video_job(self, image_paths: List[str], audio_path: str, story: str) -> str:
+        """Create a video job from images, audio, and story"""
+        try:
+            # Generate unique job ID
+            job_id = f"video-job-{uuid.uuid4().hex[:8]}"
+            
+            # Upload assets to GCS
+            asset_urls = self.upload_assets_to_gcs(job_id, image_paths, audio_path)
+            
+            # Prepare job data
+            job_data = {
+                "job_id": job_id,
+                "script": story,
+                "voice_settings": {},
+                "video_settings": {},
+                "created_at": time.time(),
+                **asset_urls
+            }
+            
+            # Upload job configuration to GCS
+            self.create_job_config(job_id, job_data)
+            
+            # Submit the job
+            job = aiplatform.CustomJob(
+                display_name=f"av-gpu-job-{job_id}",
+                worker_pool_specs=[
+                    {
+                        "machine_spec": {
+                            "machine_type": self.machine_type,
+                            "accelerator_type": self.accelerator_type,
+                            "accelerator_count": self.accelerator_count,
+                        },
+                        "replica_count": 1,
+                        "container_spec": {
+                            "image_uri": self.container_image,
+                            "args": [
+                                "--job-id", job_id,
+                                "--project-id", self.project_id,
+                                "--bucket-name", self.bucket_name
+                            ],
+                            "env": [
+                                {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
+                            ]
+                        },
+                    }
+                ]
+            )
+            
+            # Start the job asynchronously
+            job.run(sync=False)
+            
+            logger.info(f"Submitted video creation job: {job_id}")
+            return job_id
+            
+        except Exception as e:
+            logger.error(f"Failed to create video job: {e}")
             raise
     
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
@@ -162,6 +250,27 @@ class VertexGPUJobService:
         except Exception as e:
             logger.error(f"Failed to get job result: {e}")
             return None
+    
+    def download_video_result(self, job_id: str, local_path: str) -> bool:
+        """Download the completed video from GCS to local path"""
+        try:
+            video_url = self.get_job_result(job_id)
+            if not video_url:
+                logger.error("No video result available")
+                return False
+            
+            # Extract blob name from GCS URL
+            blob_name = video_url.replace(f"gs://{self.bucket_name}/", "")
+            blob = self.bucket.blob(blob_name)
+            
+            # Download to local path
+            blob.download_to_filename(local_path)
+            logger.info(f"Downloaded video to: {local_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to download video result: {e}")
+            return False
     
     def wait_for_job_completion(self, job_id: str, timeout: int = 600) -> Dict[str, Any]:
         """Wait for job completion with timeout"""

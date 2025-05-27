@@ -297,21 +297,34 @@ def generate_video_batch():
         
         # Try GPU worker first
         try:
-            logger.info("🚀 Attempting video creation with GPU worker...")
+            logger.info("🚀 Attempting video creation with Vertex AI GPU...")
             
-            # Get the worker URL first
+            # Use Vertex AI GPU service
+            from vertex_gpu_service import VertexGPUJobService
+            
             project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'autovideo-442318')
-            worker_url = WorkerClient.create_worker(project_id)
+            gpu_service = VertexGPUJobService(project_id=project_id)
             
-            if not worker_url:
-                raise Exception("Could not get GPU worker URL")
+            # Submit job to Vertex AI
+            job_id = gpu_service.create_video_job(image_paths, audio_path, story)
+            logger.info(f"Submitted Vertex AI job: {job_id}")
             
-            worker_client = WorkerClient(worker_url)
-            video_path = worker_client.create_video(image_paths, audio_path, story, timestamp, output_path)
-            logger.info("✅ Video created successfully using GPU worker")
-            send_custom_metric("video_creation_method", 1.0, {"method": "gpu_worker"})
+            # Wait for completion
+            result = gpu_service.wait_for_job_completion(job_id, timeout=600)
+            
+            if result.get("status") == "completed":
+                # Download the result
+                if gpu_service.download_video_result(job_id, output_path):
+                    video_path = output_path
+                    logger.info("✅ Video created successfully using Vertex AI GPU")
+                    send_custom_metric("video_creation_method", 1.0, {"method": "vertex_gpu"})
+                else:
+                    raise Exception("Failed to download video from Vertex AI")
+            else:
+                raise Exception(f"Vertex AI job failed: {result}")
+        
         except Exception as gpu_error:
-            logger.warning(f"⚠️ GPU worker failed: {gpu_error}")
+            logger.warning(f"⚠️ Vertex AI GPU failed: {gpu_error}")
             
             # Fallback to local processing if available
             if LOCAL_VIDEO_PROCESSING_AVAILABLE and create_video:
@@ -320,9 +333,9 @@ def generate_video_batch():
                 logger.info("✅ Video created successfully using local processing")
                 send_custom_metric("video_creation_method", 1.0, {"method": "local_fallback"})
             else:
-                logger.error("❌ Both GPU worker and local processing failed/unavailable")
+                logger.error("❌ Both Vertex AI GPU and local processing failed/unavailable")
                 send_custom_metric("video_creation_method", 1.0, {"method": "failed"})
-                raise Exception(f"Video creation failed: GPU worker error: {gpu_error}, Local processing unavailable: {not LOCAL_VIDEO_PROCESSING_AVAILABLE}")
+                raise Exception(f"Video creation failed: Vertex AI error: {gpu_error}, Local processing unavailable: {not LOCAL_VIDEO_PROCESSING_AVAILABLE}")
         
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()
@@ -432,32 +445,45 @@ def generate_video_thread():
         
         # Try GPU worker first
         try:
-            logger.info("Attempting video creation with GPU worker...")
+            logger.info("🚀 Attempting video creation with Vertex AI GPU...")
             
-            # Get the worker URL first
+            # Use Vertex AI GPU service
+            from vertex_gpu_service import VertexGPUJobService
+            
             project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'autovideo-442318')
-            worker_url = WorkerClient.create_worker(project_id)
+            gpu_service = VertexGPUJobService(project_id=project_id)
             
-            if not worker_url:
-                raise Exception("Could not get GPU worker URL")
+            # Submit job to Vertex AI
+            job_id = gpu_service.create_video_job(image_paths, audio_path, story)
+            logger.info(f"Submitted Vertex AI job: {job_id}")
             
-            worker_client = WorkerClient(worker_url)
-            video_path = worker_client.create_video(image_paths, audio_path, story, timestamp, output_path)
-            logger.info("Video created successfully using GPU worker")
-            send_custom_metric("video_creation_method", 1.0, {"method": "gpu_worker"})
+            # Wait for completion
+            result = gpu_service.wait_for_job_completion(job_id, timeout=600)
+            
+            if result.get("status") == "completed":
+                # Download the result
+                if gpu_service.download_video_result(job_id, output_path):
+                    video_path = output_path
+                    logger.info("✅ Video created successfully using Vertex AI GPU")
+                    send_custom_metric("video_creation_method", 1.0, {"method": "vertex_gpu"})
+                else:
+                    raise Exception("Failed to download video from Vertex AI")
+            else:
+                raise Exception(f"Vertex AI job failed: {result}")
+        
         except Exception as gpu_error:
-            logger.warning(f"GPU worker failed: {gpu_error}")
+            logger.warning(f"⚠️ Vertex AI GPU failed: {gpu_error}")
             
             # Fallback to local processing if available
             if LOCAL_VIDEO_PROCESSING_AVAILABLE and create_video:
-                logger.info("Falling back to local video processing...")
+                logger.info("🔄 Falling back to local video processing...")
                 video_path = create_video(image_paths, audio_path, story, timestamp, output_path)
-                logger.info("Video created successfully using local processing")
+                logger.info("✅ Video created successfully using local processing")
                 send_custom_metric("video_creation_method", 1.0, {"method": "local_fallback"})
             else:
-                logger.error("Both GPU worker and local processing failed/unavailable")
+                logger.error("❌ Both Vertex AI GPU and local processing failed/unavailable")
                 send_custom_metric("video_creation_method", 1.0, {"method": "failed"})
-                raise Exception(f"Video creation failed: GPU worker error: {gpu_error}, Local processing unavailable: {not LOCAL_VIDEO_PROCESSING_AVAILABLE}")
+                raise Exception(f"Video creation failed: Vertex AI error: {gpu_error}, Local processing unavailable: {not LOCAL_VIDEO_PROCESSING_AVAILABLE}")
         
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()

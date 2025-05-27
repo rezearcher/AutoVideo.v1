@@ -1,0 +1,94 @@
+name: Daily Video Generation
+
+on:
+  schedule:
+    # Run daily at 9 AM EST (2 PM UTC)
+    - cron: '0 14 * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  GOOGLE_CLOUD_PROJECT: av-8675309
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+  YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+  YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+  YOUTUBE_PROJECT_ID: ${{ secrets.YOUTUBE_PROJECT_ID }}
+
+jobs:
+  generate-video:
+    name: Generate and Upload Video
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # 1 hour timeout
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CLOUD_SA_KEY }}
+          
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: av-8675309
+          
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+        
+      - name: Create output directories
+        run: |
+          mkdir -p output
+          mkdir -p secrets
+          mkdir -p fonts
+          
+      - name: Set up YouTube credentials
+        run: |
+          echo '${{ secrets.YOUTUBE_CLIENT_SECRET }}' > secrets/client_secret.json
+          # Note: YouTube token will be generated during first run
+          
+      - name: Run video generation (batch mode)
+        run: |
+          echo "🚀 Starting AutoVideo batch generation with Vertex AI GPU..."
+          python main.py --mode=batch
+          
+      - name: Upload artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: generation-logs-${{ github.run_number }}
+          path: |
+            output/
+            *.log
+          retention-days: 7
+          
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "✅ Video generation completed successfully!"
+          echo "📊 Check Cloud Monitoring for detailed metrics"
+          
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Video generation failed!"
+          echo "📋 Check the logs and artifacts for debugging" 

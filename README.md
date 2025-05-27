@@ -1,782 +1,503 @@
 # **AutoVideo v1 — AI Auto Video Generator**
 
-An automated video generation pipeline that creates engaging videos from AI-generated stories, complete with images, voiceovers, and YouTube uploads.
+An automated video generation pipeline that creates engaging videos from AI-generated stories, complete with images, voiceovers, and YouTube uploads. Built with a modern microservices architecture featuring on-demand GPU processing and real-time monitoring.
 
-## Architecture
+## 🏗️ Architecture Overview
 
-The application consists of two main components:
+AutoVideo is a **batch processing pipeline** with monitoring capabilities:
 
-1. **Main Application (av-app)**
-   - Flask-based web service
-   - Handles API endpoints and coordination
-   - Manages video generation pipeline
+### **Core Function**
+- 🎬 **Automated Video Generation**: Creates complete videos from AI-generated content
+- 📤 **YouTube Upload**: Automatically publishes to YouTube with metadata
+- 🔄 **Batch Processing**: Runs on-demand or scheduled to generate videos
+
+### **Monitoring Interface**
+- 📊 **Flask Web App**: Provides real-time status and health monitoring
+- 🔍 **Pipeline Visibility**: Track generation progress and performance
+- 📈 **Metrics Dashboard**: Monitor resource usage and success rates
+
+### **Main Components**
+
+1. **Video Generation Pipeline** (Core)
+   - AI story generation and scene extraction
+   - Image creation and voiceover synthesis
+   - GPU-accelerated video processing
+   - Automated YouTube publishing
+
+2. **Monitoring Web App** (`av-app`)
+   - Flask-based status and health endpoints
+   - Real-time pipeline monitoring
+   - Performance metrics and logging
    - Deployed on Google Cloud Run
 
-2. **GPU Worker**
-   - Dedicated service for video processing
-   - Handles computationally intensive tasks
-   - Optimized for GPU acceleration
-   - Deployed on Google Cloud Run with GPU support
-
-## Pipeline Process
-
-1. **Story Generation**
-   - Uses OpenAI to generate engaging stories
-   - Extracts key scenes for visualization
-
-2. **Image Generation**
-   - Creates images for each scene
-   - Ensures visual consistency
-
-3. **Voiceover Generation**
-   - Converts story text to natural-sounding speech
-   - Uses ElevenLabs for high-quality voice synthesis
-
-4. **Video Creation**
-   - Combines images and voiceover
-   - Adds transitions and effects
-   - Optimizes for YouTube
-
-5. **YouTube Upload**
-   - Handles authentication and upload
-   - Manages video metadata
-
-## Setup
-
-### Prerequisites
-
-- Python 3.11+
-- Docker
-- Google Cloud SDK
-- Required API keys:
-  - OpenAI API Key
-  - ElevenLabs API Key
-  - YouTube API credentials
-  - Google Cloud Project
-
-### Google Cloud Platform Setup
-
-**⚠️ Important: You must enable several GCP APIs and configure permissions before deployment.**
-
-#### Quick Setup (Recommended)
-
-Run the automated setup script:
-
-```bash
-# Set your GCP project
-gcloud config set project YOUR_PROJECT_ID
-
-# Run the setup script
-./scripts/setup_gcp.sh
-```
-
-This script will:
-- ✅ Enable all required Google Cloud APIs
-- ✅ Create a service account with proper permissions
-- ✅ Generate authentication keys
-- ✅ Verify the setup
-
-#### Manual Setup
-
-If you prefer manual setup, see the detailed guide: [`docs/gcp-setup.md`](docs/gcp-setup.md)
-
-#### Required GCP APIs
-
-The following APIs must be enabled:
-- **Cloud Build** (`cloudbuild.googleapis.com`)
-- **Cloud Run** (`run.googleapis.com`) 
-- **Container Registry** (`containerregistry.googleapis.com`)
-- **Cloud Monitoring** (`monitoring.googleapis.com`)
-- **Cloud Logging** (`logging.googleapis.com`)
-- **Cloud Resource Manager** (`cloudresourcemanager.googleapis.com`)
-- **Service Usage** (`serviceusage.googleapis.com`)
-- **Identity & Access Management** (`iam.googleapis.com`)
-
-#### Required GitHub Secrets
-
-After running the setup script, add these secrets to your GitHub repository:
-
-| Secret Name | Description |
-|-------------|-------------|
-| `GOOGLE_CLOUD_PROJECT_ID` | Your GCP Project ID |
-| `GOOGLE_CLOUD_SA_KEY` | Service account key (JSON) |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `ELEVENLABS_API_KEY` | ElevenLabs API key |
-| `YOUTUBE_CLIENT_ID` | YouTube API client ID |
-| `YOUTUBE_CLIENT_SECRET` | YouTube API client secret |
-| `YOUTUBE_PROJECT_ID` | YouTube API project ID |
-
-### Environment Variables
-
-```bash
-OPENAI_API_KEY=your_openai_key
-ELAI_API_KEY=your_elai_key
-DID_API_KEY=your_did_key
-IMGUR_CLIENT_ID=your_imgur_client_id
-IMGUR_CLIENT_SECRET=your_imgur_client_secret
-ELEVENLABS_API_KEY=your_elevenlabs_key
-PEXELS_API_KEY=your_pexels_key
-YOUTUBE_CLIENT_ID=your_youtube_client_id
-YOUTUBE_CLIENT_SECRET=your_youtube_client_secret
-YOUTUBE_PROJECT_ID=your_youtube_project_id
-GOOGLE_CLOUD_PROJECT=your_gcp_project_id
-```
-
-### Local Development
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/rezearcher/AutoVideo.v1.git
-   cd AI-Auto-Video-Generator
-   ```
-
-2. Create and activate virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Linux/Mac
-   # or
-   .\venv\Scripts\activate  # Windows
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Run the application:
-   ```bash
-   python main.py
-   ```
-
-### Docker Build
-
-1. Build the image:
-   ```bash
-   docker build -t av-app .
-   ```
-
-2. Run the container:
-   ```bash
-   docker run -p 8080:8080 av-app
-   ```
-
-## Deployment
-
-### Automated Deployment Process
-
-**🚀 The application automatically deploys when you commit code to the `main` branch.**
-
-The deployment process is fully automated via GitHub Actions and includes:
-
-1. **Trigger**: Any push to the `main` branch
-2. **Testing**: Runs API connectivity tests for all services
-3. **Build**: Creates Docker container with your latest code
-4. **Deploy**: Deploys to Google Cloud Run in production
-
-### Deployment Pipeline
-
-```mermaid
-graph LR
-    A[Push to main] --> B[Run Tests]
-    B --> C[Build Container]
-    C --> D[Deploy to Cloud Run]
-    D --> E[Service Live]
-```
-
-#### Step-by-Step Process:
-
-1. **API Tests** (`test` job)
-   - Tests OpenAI API connectivity
-   - Tests ElevenLabs API connectivity  
-   - Tests YouTube API credentials
-   - Must pass for deployment to proceed
-
-2. **Production Deployment** (`deploy-production` job)
-   - Builds Docker container with latest code
-   - Pushes to Google Container Registry
-   - Deploys to Cloud Run with production configuration:
-     - **Service**: `av-app`
-     - **Region**: `us-central1`
-     - **Resources**: 2Gi memory, 2 CPU
-     - **Scaling**: 1-10 instances
-     - **Timeout**: 300s
-
-### Manual Deployment
-
-If you need to deploy manually (not recommended for production):
-
-```bash
-# Using the deployment script
-./scripts/deploy.sh
-
-# Or using gcloud directly
-gcloud builds submit --tag gcr.io/$GOOGLE_CLOUD_PROJECT/av-app
-gcloud run deploy av-app \
-  --image gcr.io/$GOOGLE_CLOUD_PROJECT/av-app \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated
-```
-
-### Monitoring Deployments
-
-- **GitHub Actions**: Check the Actions tab in your repository
-- **Cloud Run Console**: Monitor service health and logs
-- **Health Check**: `GET /health` endpoint for service status
-
-### Deployment Requirements
-
-Before pushing to main, ensure:
-- [ ] All API keys are configured in GitHub Secrets
-- [ ] Code passes local tests
-- [ ] Environment variables are properly set
-- [ ] No sensitive data in code (use secrets instead)
-
-### Required GitHub Secrets
-
-The following secrets must be configured in your repository:
-- `OPENAI_API_KEY`
-- `ELEVENLABS_API_KEY` 
-- `YOUTUBE_CLIENT_ID`
-- `YOUTUBE_CLIENT_SECRET`
-- `YOUTUBE_PROJECT_ID`
-
-## API Endpoints
-
-- `GET /health` - Health check endpoint
-- `GET /status` - Get current video generation status
-- `POST /generate` - Start video generation process
-
-## Monitoring
-
-The application includes comprehensive logging and timing metrics for each phase of the video generation process. You can monitor the progress through the `/status` endpoint.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-# ✨ **Demo Examples**
-[![Example 0](https://img.youtube.com/vi/hV4t2yW-RUk/0.jpg)](https://www.youtube.com/watch?v=hV4t2yW-RUk)
-[![Example 1](https://img.youtube.com/vi/Vzcras5Snyo/0.jpg)](https://www.youtube.com/watch?v=Vzcras5Snyo)
-
----
-
-# 🚀 **Project Goals (2025 Rollout)**
-
-| Phase | Goal |
-|:---|:---|
-| V1 | ✅ Generate basic videos, upload to YouTube via automation |
-| V2 | Improve video quality (AI scene analysis, dynamic editing) |
-| V3 | Inject trend detection to create timely, viral content |
-| Beyond | Expand to TikTok, Instagram, trend scraping, analytics |
-
----
-
-# 📦 **Getting Started**
-
-## 1. Prerequisites
-
-- Python 3.8+ (pyenv recommended)
-- Docker + Docker Compose (for containerization)
-- GitHub account (for repo + CI/CD)
-- Google Cloud / YouTube API credentials
-- FFmpeg installed locally (`brew install ffmpeg` or `apt install ffmpeg`)
-
----
-
-## 2. Environment Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/YOURNAMEHERE/AutoVideo.git
-cd AutoVideo
-
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install the package in development mode
-pip install -e .
-
-# Install development dependencies (optional)
-pip install -r requirements-dev.txt
-
-# Install spacy model
-python -m spacy download en_core_web_sm
-```
-
----
-
-## 3. Project Structure
-
-```
-AI-Auto-Video-Generator/
-├── .github/               # GitHub Actions workflows
-│   └── workflows/        # CI/CD configuration
-├── .venv/                # Virtual environment
-├── output/               # Generated videos
-│   ├── audio/           # Generated audio files
-│   ├── images/          # Generated images
-│   ├── logs/            # Application logs
-│   ├── text/            # Generated text content
-│   └── video/           # Final video output
-├── scripts/             # Utility scripts
-├── youtube_uploader/    # YouTube upload functionality
-├── .env                 # Environment variables (create from .env.example)
-├── .env.example        # Example environment variables
-├── main.py             # Main entry point
-├── story_generator.py  # Story generation using GPT
-├── image_generator.py  # Image generation using DALL-E
-├── voiceover_generator.py # Voice generation using ElevenLabs
-├── video_creator.py    # Video assembly using MoviePy
-├── topic_manager.py    # Topic management and generation
-├── output_manager.py   # Output file management
-├── setup.py           # Package setup configuration
-├── requirements.txt   # Core dependencies
-└── requirements-dev.txt # Development dependencies
-```
-
----
-
-## 4. API Keys Configuration
-
-Copy `.env.example` to `.env` and fill in your API keys:
-
-```bash
-cp .env.example .env
-```
-
-Required API keys:
-- OpenAI API Key (for story and image generation)
-- ElevenLabs API Key (for voice generation)
-- YouTube API credentials (for video upload)
-- Stability AI API Key (for image generation)
-
-**Important:**  
-Keep your API keys secret. Never commit `.env` to GitHub.
-
----
-
-## 5. Usage
-
-### Local Development
-
-Run the application using the installed command:
-
-```bash
-ai-video-gen
-```
-
-Or run directly:
-
-```bash
-python main.py
-```
-
-### Docker
-
-Build and run the container:
-
-```bash
-docker build -t autovideo .
-docker run --env-file .env autovideo
-```
-
-### Cloud Run Deployment
-
-The application is automatically deployed to Google Cloud Run via GitHub Actions. The workflow:
-
-1. Builds the Docker image
-2. Pushes to Google Container Registry
-3. Deploys to Cloud Run
-4. Runs daily at 9 AM EST
-
-To deploy manually:
-
-```bash
-gcloud run deploy av-app \
-  --image us-central1-docker.pkg.dev/PROJECT_ID/av-app/av-app:latest \
-  --region us-central1 \
-  --platform managed \
-  --allow-unauthenticated
-```
-
-The application will:
-1. Generate a story from a prompt
-2. Create images for key scenes
-3. Generate voiceover narration
-4. Assemble the final video
-5. Upload to YouTube automatically
-
-Output files will be saved in the `/output` directory, organized by type and timestamp.
-
----
-
-# 🐳 **Containerization**
-
-The application is containerized using Docker and includes:
-
-- Python 3.11 base image
-- FFmpeg for video processing
-- Gunicorn for production serving
-- Health checks and proper logging
-- Non-root user for security
-- Proper file permissions
-
-# 🔄 **Split Architecture**
-
-The application uses a split architecture with two main components:
-
-1. **Web Application Container**
-   - Handles HTTP requests and API endpoints
-   - Manages story generation and image creation
-   - Coordinates the video generation process
-   - Runs on standard Cloud Run instances
-
-2. **GPU Worker Container**
-   - Dedicated container for video processing
-   - Uses NVIDIA CUDA for hardware acceleration
-   - Handles video rendering and encoding
-   - Runs on GPU-enabled instances
-   - Communicates with main app via HTTP
-
-This architecture provides several benefits:
-- Better resource utilization
-- Improved scalability
-- Independent scaling of web and processing components
-- Cost optimization (GPU only when needed)
-- Better error isolation
-
-The worker container is built using `Dockerfile.gpu-worker` and includes:
-- NVIDIA CUDA runtime
-- FFmpeg with CUDA support
-- FastAPI for worker API endpoints
-- Async processing capabilities
-
----
-
-# ⚙️ **Development**
-
-## Testing
-
-Run tests with pytest:
-
-```bash
-pytest
-```
-
-Run tests with coverage:
-
-```bash
-pytest --cov=.
-```
-
-## Code Quality
-
-Format code:
-
-```bash
-black .
-flake8
-mypy .
-```
-
-## Documentation
-
-Build documentation:
-
-```bash
-cd docs
-make html
-```
-
----
-
-# 🛰️ **Cloud Deployment**
-
-The application is deployed to Google Cloud Run with:
-
-- Daily scheduled execution (9 AM EST)
-- Automatic container builds
-- Environment variable management
-- Health monitoring
-- Proper logging
-- YouTube integration
-
-Required GCP setup:
-1. Enable required APIs (Cloud Run, Container Registry)
-2. Create service account with necessary permissions
-3. Configure GitHub Actions secrets
-
-## Secret Management
-
-### GitHub Actions Secrets
-The application uses GitHub Actions secrets for secure deployment. Required secrets:
-
-```yaml
-# GitHub Actions Secrets
-OPENAI_API_KEY: OpenAI API key for story generation
-ELEVENLABS_API_KEY: ElevenLabs API key for voice synthesis
-WIF_PROVIDER: Google Cloud Workload Identity Provider
-WIF_SERVICE_ACCOUNT: Google Cloud Service Account for deployment
-```
-
-### Cloud Run Environment Variables
-The application uses environment variables in Cloud Run for runtime configuration:
-
-```yaml
-# Cloud Run Environment Variables
-OPENAI_API_KEY: Set from GitHub Actions secret
-ELEVENLABS_API_KEY: Set from GitHub Actions secret
-YOUTUBE_ENABLED: true/false to control YouTube upload feature
-GOOGLE_CLOUD_PROJECT: Project ID for Google Cloud services
-```
-
-### Important Notes
-1. Never store secrets in files or commit them to the repository
-2. Use GitHub Actions secrets for deployment-time configuration
-3. Use Cloud Run environment variables for runtime configuration
-4. The service account must have the following roles:
-   - Cloud Run Admin
-   - Service Account User
-   - Storage Admin
-
----
-
-# 📈 **Future Enhancements (V2+)**
-
-- Smarter video editing (scene analysis, pacing control)
-- Auto-generated thumbnails
-- Trend scraping (TikTok, YouTube, Instagram)
-- Dynamic title/caption/hashtag injection
-- Full multi-platform publishing
-- Analytics tracking and performance dashboards
-
----
-
-# 🧠 **Notes and Warnings**
-
-- AI generation can sometimes fail due to API limits or bad prompts — retries will be implemented.
-- This project will evolve rapidly — check for updated branches.
-- This repo **starts simple on purpose** — foundation first, fancy later.
-
----
-
-# 🛠️ **Contributing**
-
-Right now this is a **personal/internal project**.  
-Future contributors will follow a simple fork + pull request model.
-
----
-
-# 👨‍💻 **Author**
-
-**Rez E. Archer**  
-- DevOps Architect | Full Stack Developer | Builder of Silent Empires  
-- [probably.ninja (coming soon)](#)
-
----
-
-# 🏴 **License**
-
-MIT License (free to use, modify, distribute — with attribution if public.)
-
----
-
-# Testing GitHub Actions
-# Force deployment
-
-## 📊 Google Cloud Monitoring
-
-AutoVideo includes comprehensive Google Cloud monitoring with real-time metrics, alerting, and observability features.
-
-### Monitoring Features
-
-#### 🔍 **Custom Metrics**
-- **Pipeline Tracking**: Monitor video generation pipeline start, completion, and duration
-- **Phase Monitoring**: Track individual phases (story generation, image creation, voiceover, video processing)
-- **Resource Metrics**: Monitor image generation count, prompt extraction, and processing times
-- **Health Checks**: Continuous health monitoring with status reporting
-
-#### 🚨 **Alerting Policies**
-- **High Error Rate**: Alerts when error rate exceeds 5%
-- **Pipeline Failures**: Notifications for pipeline failure rate > 10%
-- **Long Pipeline Duration**: Alerts for pipelines taking > 30 minutes
-- **Service Health**: Immediate alerts for service downtime
-- **Resource Usage**: CPU and memory utilization alerts at 80% threshold
-
-#### 📈 **Dashboards**
-- **Operations Dashboard**: Real-time view of pipeline performance
-- **Error Tracking**: Comprehensive error rate and failure analysis
-- **Resource Monitoring**: CPU, memory, and instance count tracking
-- **Performance Metrics**: Request volume and response time analysis
-
-#### 📧 **Notification Channels**
-- **Email Alerts**: Configurable email notifications
-- **Slack Integration**: Real-time Slack notifications (optional)
-- **Custom Webhooks**: Support for custom notification endpoints
-
-### Automatic Monitoring Setup
-
-Monitoring is automatically configured during deployment:
+3. **GPU Processing** (`av-gpu-worker` + Vertex AI)
+   - Cloud Run service for basic video tasks
+   - Vertex AI Custom Jobs for heavy GPU processing
+   - NVIDIA Tesla T4 acceleration
+   - Zero idle costs
+
+### **Architecture Benefits**
+- 💰 **Cost Efficient**: ~75% cost reduction vs unified GPU deployment
+- 🚀 **Fast Scaling**: Independent scaling for monitoring and processing
+- 🛡️ **Fault Isolation**: GPU issues don't affect monitoring
+- ⚡ **Zero Idle Costs**: GPU resources only used during processing
+- 📊 **Full Visibility**: Monitor every step of video generation
 
 ```mermaid
 graph TD
-    A[Code Push to Main] --> B[GitHub Actions Triggered]
-    B --> C[Deploy Application]
-    C --> D[Setup Monitoring]
-    D --> E[Create Custom Metrics]
-    E --> F[Configure Alert Policies]
-    F --> G[Setup Notification Channels]
-    G --> H[Create Dashboards]
-    H --> I[Monitoring Active]
+    A[Trigger: Manual/Scheduled] --> B[Video Generation Pipeline]
+    B --> C[Generate Story & Images]
+    B --> D[Submit GPU Job]
+    D --> E[Vertex AI Custom Job]
+    E --> F[NVIDIA Tesla T4 GPU]
+    F --> G[Video Processing]
+    G --> H[Store in GCS]
+    H --> I[Upload to YouTube]
+    
+    J[Monitoring App] --> K[Track Pipeline Status]
+    J --> L[Health Checks]
+    J --> M[Performance Metrics]
+    
+    B -.-> J
+    C -.-> J
+    G -.-> J
+    I -.-> J
 ```
 
-### Manual Monitoring Setup
+## 🎬 Video Generation Pipeline
 
-To manually set up or update monitoring:
+### **Execution Flow**
+1. **Trigger**: Manual execution or scheduled run
+2. **Content Creation**: AI generates story, images, and voiceover
+3. **GPU Processing**: Heavy video rendering with CUDA acceleration
+4. **Publishing**: Automatic upload to YouTube with metadata
+5. **Monitoring**: Real-time status updates via web interface
 
-1. **Configure Project ID**:
-   ```bash
-   export PROJECT_ID="your-gcp-project-id"
-   ```
+### **Phase 1: Content Creation**
+1. **Story Generation** - OpenAI GPT-4 creates engaging narratives
+2. **Scene Extraction** - AI identifies key visual moments
+3. **Image Generation** - DALL-E creates consistent visuals
+4. **Voiceover Generation** - ElevenLabs synthesizes natural speech
 
-2. **Install Dependencies**:
-   ```bash
-   pip install google-cloud-monitoring google-cloud-logging google-cloud-error-reporting pyyaml
-   ```
+### **Phase 2: Video Processing** (GPU Jobs)
+5. **GPU Job Submission** - Triggers Vertex AI custom job
+6. **CUDA-Accelerated Rendering** - Hardware-accelerated video creation
+7. **Advanced Encoding** - Optimized for YouTube delivery
+8. **Result Storage** - Secure GCS storage with CDN delivery
 
-3. **Run Setup Script**:
-   ```bash
-   python scripts/setup_monitoring.py --project-id $PROJECT_ID
-   ```
+### **Phase 3: Distribution**
+9. **YouTube Upload** - Automated publishing with metadata
+10. **Analytics Tracking** - Performance monitoring and insights
 
-4. **Trigger via GitHub Actions**:
-   - Go to Actions tab in GitHub
-   - Select "Setup Google Cloud Monitoring"
-   - Click "Run workflow"
+## 🚀 Quick Start
 
-### Monitoring Configuration
+### **Prerequisites**
+- Python 3.11+
+- Docker & Docker Compose
+- Google Cloud SDK
+- GitHub account for CI/CD
 
-The monitoring setup is defined in `monitoring-config.yaml`:
+### **Required API Keys**
+- OpenAI API Key (GPT-4 & DALL-E)
+- ElevenLabs API Key (Voice synthesis)
+- YouTube API Credentials (Video upload)
+- Google Cloud Project (Infrastructure)
+
+### **1. Environment Setup**
+
+```bash
+# Clone repository
+git clone https://github.com/rezearcher/AutoVideo.v1.git
+cd AutoVideo.v1
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+### **2. Google Cloud Setup**
+
+```bash
+# Set your project
+gcloud config set project YOUR_PROJECT_ID
+
+# Run automated setup
+./scripts/setup_gcp.sh
+```
+
+This enables all required APIs and configures permissions for:
+- ✅ Cloud Run (monitoring web app)
+- ✅ Vertex AI (GPU jobs)
+- ✅ Cloud Storage (asset management)
+- ✅ Container Registry (image storage)
+- ✅ Cloud Build (CI/CD)
+
+### **3. Local Development**
+
+```bash
+# Run video generation pipeline
+python main.py
+
+# Or run with monitoring (Flask app)
+python main.py --monitor
+
+# Or with Docker
+docker build -t autovideo .
+docker run --env-file .env -p 8080:8080 autovideo
+```
+
+### **4. GPU Container Setup**
+
+```bash
+# Build and deploy GPU container (one-time setup)
+./build-gpu-container.sh
+```
+
+This creates the NVIDIA CUDA container for Vertex AI jobs.
+
+## 🔄 Deployment & Execution
+
+### **Deployment Strategy**
+
+**Monitoring App**: Deploys automatically on every push to `main`
+- Provides real-time status during video generation
+- Health checks and performance monitoring
+- Always available for pipeline visibility
+
+**GPU Container**: Deploy manually when GPU code changes
+```bash
+./build-gpu-container.sh
+```
+
+### **Execution Methods**
+
+#### **1. Manual Execution**
+```bash
+# Generate video locally
+python main.py
+
+# Trigger via monitoring API
+curl -X POST https://av-app-u6sfbxnveq-uc.a.run.app/generate
+```
+
+#### **2. Scheduled Execution** (Recommended)
+```yaml
+# Add to .github/workflows/scheduled-generation.yml
+name: Daily Video Generation
+on:
+  schedule:
+    - cron: '0 9 * * *'  # Daily at 9 AM EST
+  workflow_dispatch:
+
+jobs:
+  generate-video:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Video Generation
+        run: |
+          curl -X POST https://av-app-u6sfbxnveq-uc.a.run.app/generate
+```
+
+#### **3. Cloud Run Jobs** (Alternative)
+```bash
+# Deploy as Cloud Run Job for scheduled execution
+gcloud run jobs create av-video-generator \
+  --image gcr.io/av-8675309/av-app:latest \
+  --region us-central1 \
+  --task-timeout 3600
+```
+
+### **Required GitHub Secrets**
+
+Configure these in your repository settings:
 
 ```yaml
-# Key monitoring thresholds
-alerting_policies:
-  - Error rate threshold: 5%
-  - Pipeline failure threshold: 10%
-  - Pipeline duration threshold: 30 minutes
-  - CPU utilization threshold: 80%
-  - Memory utilization threshold: 80%
+# API Keys
+OPENAI_API_KEY: Your OpenAI API key
+ELEVENLABS_API_KEY: Your ElevenLabs API key
+YOUTUBE_CLIENT_ID: YouTube API client ID
+YOUTUBE_CLIENT_SECRET: YouTube API client secret
+YOUTUBE_PROJECT_ID: YouTube API project ID
 
-# Custom metrics tracked
-custom_metrics:
+# Google Cloud (from setup script)
+GOOGLE_CLOUD_PROJECT_ID: Your GCP project ID
+GOOGLE_CLOUD_SA_KEY: Service account JSON key
+```
+
+## 📊 Monitoring & Observability
+
+### **Real-Time Monitoring**
+
+The Flask monitoring app provides:
+- 📈 **Pipeline Status**: Current generation progress
+- 🚨 **Health Checks**: System health and API connectivity
+- 📊 **Performance Metrics**: Generation times and resource usage
+- 🔍 **Detailed Logs**: Step-by-step pipeline execution
+
+### **Monitoring Endpoints**
+
+```http
+GET  /health              # System health check
+GET  /status              # Current pipeline status
+POST /generate            # Trigger video generation
+GET  /metrics             # Performance metrics
+```
+
+### **Example Monitoring**
+
+```bash
+# Check if system is healthy
+curl https://av-app-u6sfbxnveq-uc.a.run.app/health
+
+# Monitor generation progress
+curl https://av-app-u6sfbxnveq-uc.a.run.app/status
+
+# Trigger new video generation
+curl -X POST https://av-app-u6sfbxnveq-uc.a.run.app/generate
+```
+
+### **Key Metrics Tracked**
+
+```yaml
+Pipeline Metrics:
   - autovideo/pipeline_started
-  - autovideo/pipeline_completed
+  - autovideo/pipeline_completed  
   - autovideo/pipeline_duration
   - autovideo/phase_duration
-  - autovideo/generation_request
+
+Resource Metrics:
   - autovideo/images_generated
+  - autovideo/gpu_job_duration
+  - autovideo/storage_usage
+
+Health Metrics:
   - autovideo/health_check
+  - autovideo/api_response_time
+  - autovideo/error_rate
 ```
 
-### Accessing Monitoring Data
+## 🛠️ GPU Job Implementation
 
-#### **Google Cloud Console**
-1. Navigate to [Google Cloud Monitoring](https://console.cloud.google.com/monitoring)
-2. View the "AutoVideo Operations Dashboard"
-3. Check alert policies and notification channels
-4. Review custom metrics and logs
+### **Vertex AI Custom Jobs**
 
-#### **Programmatic Access**
+The application uses Vertex AI for on-demand GPU processing:
+
 ```python
-from google.cloud import monitoring_v3
+from vertex_gpu_service import VertexGPUJobService
 
-client = monitoring_v3.MetricServiceClient()
-project_name = f"projects/{project_id}"
+# Initialize GPU service
+gpu_service = VertexGPUJobService(
+    project_id="your-project-id",
+    region="us-central1"
+)
 
-# List custom metrics
-metrics = client.list_metric_descriptors(name=project_name)
-for metric in metrics:
-    if "autovideo" in metric.type:
-        print(f"Metric: {metric.type}")
+# Submit GPU job (non-blocking)
+job_id = gpu_service.submit_gpu_job(
+    script=generated_script,
+    voice_settings=voice_config,
+    video_settings=video_config
+)
+
+# Monitor via web interface
+# Check status at /status endpoint
 ```
 
-### Key Metrics Explained
+### **GPU Container Specifications**
 
-| Metric | Description | Alert Threshold |
-|--------|-------------|-----------------|
-| `pipeline_duration` | Total time for video generation | > 30 minutes |
-| `pipeline_completed` | Pipeline success/failure status | > 10% failure rate |
-| `phase_duration` | Individual phase timing | Tracked for optimization |
-| `generation_request` | Incoming generation requests | Rate monitoring |
-| `health_check` | Service health status | Any unhealthy status |
-| `images_generated` | Images created per pipeline | Performance tracking |
+- **Base Image**: NVIDIA CUDA 11.8 + Ubuntu 20.04
+- **GPU**: NVIDIA Tesla T4 (16GB VRAM)
+- **Machine**: n1-standard-4 (4 vCPU, 15GB RAM)
+- **Storage**: Google Cloud Storage integration
+- **Networking**: Private VPC with secure GCS access
 
-### Troubleshooting Monitoring
+### **Cost Optimization**
 
-#### **Common Issues**
+| Component | Cost Model | Monthly Estimate |
+|-----------|------------|------------------|
+| Monitoring App (Cloud Run) | Always-on | ~$20 |
+| GPU Worker (Cloud Run) | Auto-scaling | ~$10 |
+| Vertex AI GPU Jobs | Pay-per-use | ~$5-15 |
+| Storage & Networking | Usage-based | ~$10 |
+| **Total** | | **~$45-55** |
 
-1. **Missing Metrics**:
-   ```bash
-   # Check if custom metrics are created
-   gcloud logging metrics list | grep autovideo
-   ```
+*vs. Always-on GPU: ~$250/month*
 
-2. **Alert Policy Errors**:
-   ```bash
-   # List alert policies
-   gcloud alpha monitoring policies list --filter="displayName:AutoVideo"
-   ```
+## 📁 Project Structure
 
-3. **Permission Issues**:
-   - Ensure service account has `Monitoring Admin` role
-   - Verify `GOOGLE_CLOUD_SA_KEY` secret is configured
+```
+AutoVideo.v1/
+├── .github/workflows/        # GitHub Actions CI/CD
+│   ├── main.yml             # Main app deployment to Cloud Run
+│   ├── deploy-vertex-gpu.yml # Vertex AI GPU container deployment
+│   ├── scheduled-generation.yml # Daily video generation
+│   └── setup-monitoring.yml # Monitoring setup
+├── scripts/                 # Utility scripts
+│   ├── setup_gcp.sh         # GCP environment setup
+│   ├── build-gpu-container.sh # Manual GPU container build
+│   └── setup_monitoring.py # Monitoring configuration
+├── output/                  # Generated content
+│   ├── audio/              # Voice files
+│   ├── images/             # Generated images
+│   ├── videos/             # Final videos
+│   └── logs/               # Application logs
+├── gpu_worker.py            # Vertex AI GPU processing script
+├── vertex_gpu_service.py    # GPU job management service
+├── Dockerfile              # Main app container
+├── Dockerfile.gpu          # Vertex AI GPU container
+├── requirements.txt        # Main app dependencies
+├── requirements-gpu.txt    # GPU worker dependencies
+├── main.py                 # Video generation pipeline + monitoring
+├── story_generator.py      # AI story generation
+├── image_generator.py      # DALL-E image creation
+├── voiceover_generator.py  # ElevenLabs voice synthesis
+├── video_creator.py        # Local video assembly (fallback)
+├── caption_generator.py    # Video caption generation
+└── monitoring-config.yaml  # Monitoring configuration
+```
 
-#### **Monitoring Health Check**
+## 🔄 Automated Deployment
+
+The entire system is fully automated via GitHub Actions:
+
+### **Continuous Integration/Deployment**
+
+1. **Code Push**: Push to `main` branch triggers deployments
+2. **Vertex AI GPU Container**: Auto-builds when GPU-related files change
+3. **Main Application**: Deploys to Cloud Run with latest configuration
+4. **Scheduled Generation**: Runs daily at 9 AM EST automatically
+
+### **Deployment Triggers**
+
+| Workflow | Trigger Files | Action |
+|----------|---------------|---------|
+| `main.yml` | Any code changes | Deploy main app to Cloud Run |
+| `deploy-vertex-gpu.yml` | `gpu_worker.py`, `Dockerfile.gpu`, `requirements-gpu.txt`, `caption_generator.py`, `vertex_gpu_service.py` | Build & deploy GPU container |
+| `scheduled-generation.yml` | Daily cron + manual trigger | Generate and upload video |
+
+### **Zero-Touch Operations**
+
+✅ **Fully Automated**: No manual intervention required  
+✅ **Self-Healing**: Fallback to local processing if GPU fails  
+✅ **Cost-Optimized**: GPU only runs when needed  
+✅ **Monitoring**: Real-time metrics and error reporting  
+
+## 🔧 Development
+
+### **Local Testing**
+
 ```bash
-# Test monitoring endpoint
-curl https://your-app-url.run.app/health
+# Run video generation pipeline
+python main.py
 
-# Expected response
-{
-  "status": "healthy",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "monitoring": "active"
-}
+# Run API tests
+python test_api.py
+
+# Test GPU container locally (requires NVIDIA Docker)
+docker run --gpus all -it gcr.io/av-8675309/av-gpu-job:latest
+
+# Monitor workflows
+./scripts/monitor_workflow.sh
 ```
 
-### SLO (Service Level Objectives)
+### **Code Quality**
 
-AutoVideo maintains the following SLOs:
+```bash
+# Format code
+black .
+flake8 .
 
-- **Availability**: 99.5% uptime (30-day rolling window)
-- **Pipeline Success Rate**: 95% (7-day rolling window)
-- **Response Time**: < 5 seconds for API endpoints
-- **Error Rate**: < 5% for all requests
+# Type checking
+mypy .
 
-### Monitoring Best Practices
+# Run tests
+pytest
+```
 
-1. **Regular Review**: Check dashboards weekly for performance trends
-2. **Alert Tuning**: Adjust thresholds based on actual usage patterns
-3. **Log Analysis**: Use structured logging for better debugging
-4. **Capacity Planning**: Monitor resource usage for scaling decisions
-5. **Incident Response**: Set up escalation procedures for critical alerts
+## 🚀 Roadmap
 
-### Future Monitoring Enhancements
+### **V1 (Current)** ✅
+- ✅ Automated video generation pipeline
+- ✅ GPU-accelerated processing
+- ✅ YouTube integration
+- ✅ Real-time monitoring interface
+- ✅ Cost-optimized architecture
 
-- **Custom Dashboards**: Application-specific monitoring views
-- **Predictive Alerting**: ML-based anomaly detection
-- **Cost Monitoring**: Track GCP resource costs and optimization
-- **User Experience Monitoring**: End-to-end user journey tracking
-- **Integration Monitoring**: Third-party API performance tracking
+### **V2 (Q2 2025)**
+- 🎯 Scheduled daily/weekly generation
+- 🎯 Advanced video editing (scene analysis, dynamic pacing)
+- 🎯 Multi-platform publishing (TikTok, Instagram)
+- 🎯 Trend detection and viral content optimization
+- 🎯 Custom voice cloning
+
+### **V3 (Q4 2025)**
+- 🎯 Real-time trend scraping
+- 🎯 A/B testing for content optimization
+- 🎯 Multi-language support
+- 🎯 Advanced AI editing with scene transitions
+- 🎯 Revenue optimization algorithms
+
+## 🛡️ Security & Best Practices
+
+### **Security Features**
+- 🔐 Workload Identity Federation (no service account keys)
+- 🔒 Encrypted secrets management
+- 🛡️ Private container registry
+- 🌐 VPC-native networking
+- 📝 Comprehensive audit logging
+
+### **Best Practices**
+- ♻️ Immutable infrastructure
+- 🔄 Blue-green deployments
+- 📊 Comprehensive monitoring
+- 🧪 Automated testing
+- 💰 Cost optimization
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## ✨ Demo Examples
+
+[![Example Video 1](https://img.youtube.com/vi/hV4t2yW-RUk/0.jpg)](https://www.youtube.com/watch?v=hV4t2yW-RUk)
+[![Example Video 2](https://img.youtube.com/vi/Vzcras5Snyo/0.jpg)](https://www.youtube.com/watch?v=Vzcras5Snyo)
+
+---
+
+## 👨‍💻 Author
+
+**Rez E. Archer**  
+DevOps Architect | Full Stack Developer | AI Infrastructure Specialist
+
+- 🌐 [probably.ninja](https://probably.ninja) (coming soon)
+- 📧 Contact via GitHub Issues
+
+---
+
+## 🙏 Acknowledgments
+
+- OpenAI for GPT-4 and DALL-E APIs
+- ElevenLabs for voice synthesis technology
+- Google Cloud for robust infrastructure
+- NVIDIA for CUDA GPU acceleration
+- The open-source community for foundational tools
+
+---
+
+*Built with ❤️ for creators who want to scale their content production with AI*

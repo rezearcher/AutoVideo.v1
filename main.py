@@ -502,6 +502,31 @@ def generate_video_thread():
 try:
     is_initialized = initialize_app()
     logger.info(f"Application initialization result: {is_initialized}")
+    
+    # Check if running in Cloud Run (batch mode)
+    if os.getenv('PORT') and not os.getenv('FLASK_ENV') == 'development':
+        logger.info("🚀 Detected Cloud Run environment - Starting BATCH mode...")
+        logger.info("📋 Mode: Generate video → Upload → Exit gracefully")
+        
+        # Run batch processing in background thread to allow WSGI server to start
+        # but exit after completion
+        def run_batch_and_exit():
+            try:
+                time.sleep(2)  # Let WSGI server start
+                logger.info("🎬 Starting batch video generation...")
+                generate_video_batch()
+            except Exception as e:
+                logger.error(f"❌ Batch processing failed: {e}")
+                sys.exit(1)
+        
+        batch_thread = threading.Thread(target=run_batch_and_exit)
+        batch_thread.daemon = True
+        batch_thread.start()
+        
+        logger.info("📊 Batch processing started, WSGI server will handle health checks during generation")
+    else:
+        logger.info("📊 Running in monitoring mode - Flask server ready for manual triggers")
+        
 except Exception as e:
     logger.error(f"Failed to initialize application: {str(e)}")
     is_initialized = False

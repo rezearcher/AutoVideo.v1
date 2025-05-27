@@ -281,12 +281,16 @@ def health_check_vertex_ai():
         from google.cloud import aiplatform
         from google.cloud.aiplatform_v1.services.job_service import JobServiceClient
         
+        # Get project and location from environment
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
+        location = 'us-central1'
+        
         # Initialize Vertex AI
-        aiplatform.init(project=PROJECT_ID, location=LOCATION)
+        aiplatform.init(project=project_id, location=location)
         
         # Test connection by listing custom jobs (should work even if empty)
         client = JobServiceClient()
-        parent = f"projects/{PROJECT_ID}/locations/{LOCATION}"
+        parent = f"projects/{project_id}/locations/{location}"
         
         # This will test the actual connection to Vertex AI
         response = client.list_custom_jobs(parent=parent, page_size=1)
@@ -295,6 +299,8 @@ def health_check_vertex_ai():
             'status': 'healthy',
             'vertex_ai': 'connected',
             'message': 'Vertex AI accessible through PSC endpoint',
+            'project_id': project_id,
+            'location': location,
             'timestamp': datetime.utcnow().isoformat()
         })
         

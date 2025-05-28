@@ -225,9 +225,16 @@ The monitoring system provides complete visibility:
 GET  /health              # System health and API connectivity
 GET  /health/openai       # OpenAI API connectivity and model access test
 GET  /status              # Current pipeline status and phase tracking
-POST /generate            # Manually trigger video generation (requires auth)
-GET  /metrics             # Performance metrics and timing data
+POST /generate            # Manually trigger video generation (requires auth + rate limited)
 ```
+
+### **Application-Level Security Features**
+
+- **🔐 Authentication Required**: All endpoints require proper authorization tokens
+- **⏱️ Rate Limiting**: 10 requests per 5 minutes per IP address
+- **📊 API Monitoring**: Comprehensive logging of all external API calls (OpenAI, ElevenLabs, etc.)
+- **🛡️ Error Tracking**: Detailed error reporting and performance metrics
+- **🚨 Abuse Prevention**: Automatic rate limit enforcement with monitoring alerts
 
 ### **Example Status Response**
 
@@ -372,17 +379,19 @@ gcloud logging read 'resource.type="cloud_run_revision"' --limit=50
 
 ### **Recent Improvements (December 2025)**
 - 🔒 **Security Hardening**: Removed public access, implemented authentication requirements
-- 🌐 **VPC Configuration**: Fixed egress settings for proper API connectivity  
-- 🔄 **Enhanced Retry Logic**: Exponential backoff with jitter for OpenAI API calls
-- 📊 **Diagnostic Endpoints**: Added `/health/openai` for API connectivity testing
-- ⏱️ **Timeout Optimization**: Increased story generation timeout to 90 seconds
+- 🌐 **Network Optimization**: Simplified deployment configuration for reliable API connectivity  
+- 🔄 **Enhanced API Reliability**: Robust httpx client with proper timeouts and connection pooling
+- 📊 **Application-Level Security**: Rate limiting (10 req/5min), API call monitoring, comprehensive logging
+- ⏱️ **Timeout Optimization**: Increased story generation timeout to 90 seconds with exponential backoff
 - 🛡️ **Fail-Fast Validation**: API key validation at startup with detailed logging
+- 🧹 **Infrastructure Cleanup**: Removed deprecated GPU worker service and simplified architecture
 
 ### **Current System Health**
-- **Infrastructure**: ✅ All services deployed and healthy
-- **Security**: ✅ Authentication required, authorized access only
-- **APIs**: 🔄 Enhanced retry logic and timeout handling implemented
+- **Infrastructure**: ✅ All services deployed and healthy (simplified architecture)
+- **Security**: ✅ Application-level controls with rate limiting and API monitoring
+- **APIs**: ✅ Enhanced httpx client configuration with robust timeout handling
 - **Monitoring**: ✅ Real-time status tracking and comprehensive logging
+- **Network**: ✅ Simplified configuration for reliable external API access
 
 ### **V2 (Q2 2025)**
 - 🎯 Advanced video editing (dynamic pacing, scene transitions)

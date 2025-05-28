@@ -328,6 +328,88 @@ def health_check_vertex_ai():
             'timestamp': datetime.utcnow().isoformat()
         }), 500
 
+@app.route('/health/quota')
+def quota_health_check():
+    """Check GPU quota availability for different accelerator types"""
+    try:
+        import subprocess
+        import json
+        
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
+        region = 'us-central1'
+        
+        # GPU types to check
+        gpu_metrics = [
+            'custom_model_training_nvidia_l4_gpus',
+            'custom_model_training_nvidia_t4_gpus', 
+            'custom_model_training_nvidia_p100_gpus'
+        ]
+        
+        quota_info = {}
+        
+        for metric in gpu_metrics:
+            try:
+                # Use gcloud to check quota
+                cmd = [
+                    'gcloud', 'compute', 'regions', 'describe', region,
+                    '--project', project_id,
+                    '--format', 'json'
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                
+                if result.returncode == 0:
+                    region_data = json.loads(result.stdout)
+                    
+                    # Find the specific quota
+                    for quota in region_data.get('quotas', []):
+                        if quota.get('metric') == f'aiplatform.googleapis.com/{metric}':
+                            usage = quota.get('usage', 0)
+                            limit = quota.get('limit', 0)
+                            available = limit - usage
+                            utilization = (usage / limit * 100) if limit > 0 else 0
+                            
+                            quota_info[metric] = {
+                                'usage': usage,
+                                'limit': limit,
+                                'available': available,
+                                'utilization_percent': round(utilization, 2),
+                                'status': 'available' if available > 0 else 'exhausted'
+                            }
+                            break
+                    else:
+                        quota_info[metric] = {'status': 'not_found', 'error': 'Quota metric not found'}
+                else:
+                    quota_info[metric] = {'status': 'error', 'error': result.stderr}
+                    
+            except subprocess.TimeoutExpired:
+                quota_info[metric] = {'status': 'timeout', 'error': 'Command timed out'}
+            except Exception as e:
+                quota_info[metric] = {'status': 'error', 'error': str(e)}
+        
+        # Determine overall status
+        available_gpus = [gpu for gpu, info in quota_info.items() 
+                         if info.get('status') == 'available' and info.get('available', 0) > 0]
+        
+        overall_status = 'healthy' if available_gpus else 'limited'
+        
+        return jsonify({
+            'status': overall_status,
+            'quota_info': quota_info,
+            'available_gpu_types': available_gpus,
+            'project_id': project_id,
+            'region': region,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Quota health check failed: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
 @app.route('/status')
 def status():
     """Get the current status of video generation."""

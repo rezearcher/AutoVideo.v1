@@ -50,14 +50,23 @@ class VertexGPUJobService:
             self.bucket = self.storage_client.bucket(self.bucket_name)
             logger.info("✅ GCS client initialized successfully")
             
-            # GPU job configuration - using preemptible T4 for cost savings and higher quota
+            # GPU job configuration - using preemptible GPUs for cost savings and higher quota
             self.container_image = f"gcr.io/{project_id}/av-gpu-job"
-            # Try different GPU types for quota availability
             self.machine_type = "n1-standard-4"
-            # Try L4 GPUs which often have better quota availability
-            self.accelerator_type = "NVIDIA_L4"
             self.accelerator_count = 1
             self.use_preemptible = True  # Enable preemptible instances for cost savings
+            
+            # GPU fallback options (in order of preference)
+            self.gpu_options = [
+                ("NVIDIA_L4", True),      # L4 spot - best quota availability
+                ("NVIDIA_TESLA_T4", True), # T4 spot - good availability
+                ("NVIDIA_L4", False),     # L4 on-demand - fallback
+                ("NVIDIA_TESLA_T4", False), # T4 on-demand - fallback
+                ("NVIDIA_TESLA_P100", False), # P100 on-demand - last resort
+            ]
+            
+            # Start with the first option
+            self.accelerator_type, self.current_spot = self.gpu_options[0]
             
             logger.info(f"🎯 GPU config: {self.container_image}, {self.machine_type}, {self.accelerator_type} (preemptible: {self.use_preemptible})")
             logger.info("✅ VertexGPUJobService initialized successfully")
@@ -163,6 +172,77 @@ class VertexGPUJobService:
             logger.error(f"Failed to upload job config: {e}")
             raise
     
+    def try_next_gpu_option(self) -> bool:
+        """Try the next GPU option in the fallback list"""
+        current_index = None
+        for i, (gpu_type, spot) in enumerate(self.gpu_options):
+            if gpu_type == self.accelerator_type and spot == self.current_spot:
+                current_index = i
+                break
+        
+        if current_index is not None and current_index < len(self.gpu_options) - 1:
+            next_index = current_index + 1
+            self.accelerator_type, self.current_spot = self.gpu_options[next_index]
+            logger.info(f"🔄 Switching to GPU option {next_index + 1}: {self.accelerator_type} (spot: {self.current_spot})")
+            return True
+        else:
+            logger.warning("⚠️ No more GPU options available")
+            return False
+
+    def submit_job_with_fallback(self, job_id: str) -> str:
+        """Submit job with GPU fallback logic"""
+        max_gpu_attempts = len(self.gpu_options)
+        
+        for attempt in range(max_gpu_attempts):
+            logger.info(f"🎬 Submitting job to Vertex AI (attempt {attempt + 1}/{max_gpu_attempts}) with {self.accelerator_type} (spot: {self.current_spot})...")
+            
+            try:
+                # Create job specification with current GPU settings
+                job_spec = self.create_job_spec(job_id)
+                
+                # Submit job with timeout
+                response = self.job_client.create_custom_job(
+                    parent=f"projects/{self.project_id}/locations/{self.region}",
+                    custom_job=job_spec,
+                    timeout=60  # 60 second timeout for job submission
+                )
+                
+                logger.info(f"✅ Job submitted successfully: {response.name}")
+                logger.info(f"🎯 Job resource name: {response.name}")
+                
+                # Extract job ID from response
+                vertex_job_id = response.name.split('/')[-1]
+                logger.info(f"🆔 Vertex AI job ID: {vertex_job_id}")
+                
+                return job_id
+                
+            except Exception as submission_error:
+                logger.error(f"❌ Job submission failed: {submission_error}")
+                logger.error(f"❌ Submission error type: {type(submission_error).__name__}")
+                logger.error(f"❌ Submission error details: {str(submission_error)}")
+                
+                # Check if it's a quota issue and we have more GPU options to try
+                if "quota" in str(submission_error).lower():
+                    logger.error(f"📊 Quota limit reached for {self.accelerator_type} (spot: {self.current_spot})")
+                    if attempt < max_gpu_attempts - 1 and self.try_next_gpu_option():
+                        logger.info(f"🔄 Retrying with next GPU option...")
+                        continue
+                    else:
+                        logger.error("❌ All GPU options exhausted")
+                        raise submission_error
+                elif "timeout" in str(submission_error).lower() or "deadline" in str(submission_error).lower():
+                    logger.error("🕐 Job submission timed out - likely network connectivity issue")
+                    raise submission_error
+                elif "permission" in str(submission_error).lower() or "auth" in str(submission_error).lower():
+                    logger.error("🔐 Authentication/permission issue detected")
+                    raise submission_error
+                else:
+                    # For other errors, don't retry
+                    raise submission_error
+        
+        # This should never be reached, but just in case
+        raise Exception("Failed to submit job after all GPU options exhausted")
+
     def create_job_spec(self, job_id: str) -> Dict[str, Any]:
         """Create job specification with preemptible GPU settings for cost savings and higher quota"""
         return {
@@ -197,7 +277,8 @@ class VertexGPUJobService:
                 # Enable preemptible instances for 80% cost savings and higher quota availability
                 "scheduling": {
                     "restart_job_on_worker_restart": True,
-                    "timeout": "3600s"  # 1 hour timeout for preemptible jobs
+                    "timeout": "3600s",  # 1 hour timeout for preemptible jobs
+                    "enable_spot": self.current_spot  # Enable spot/preemptible VMs for higher quota availability
                 },
                 "enable_web_access": False,
                 "enable_dashboard_access": False
@@ -229,45 +310,10 @@ class VertexGPUJobService:
             # Upload job configuration to GCS
             self.create_job_config(job_id, job_data)
             
-            # Submit the job
+            # Submit the job with GPU fallback logic
             logger.info("🚀 Creating Vertex AI CustomJob...")
             try:
-                # Create job specification using GAPIC format
-                logger.info("📋 Building job specification...")
-                job_spec = self.create_job_spec(job_id)
-                logger.info("✅ Job specification built")
-                
-                # Submit job with timeout using GAPIC client
-                logger.info("🎬 Submitting job to Vertex AI with 60s timeout...")
-                try:
-                    response = self.job_client.create_custom_job(
-                        parent=f"projects/{self.project_id}/locations/{self.region}",
-                        custom_job=job_spec,
-                        timeout=60  # 60 second timeout for job submission
-                    )
-                    logger.info(f"✅ Job submitted successfully: {response.name}")
-                    logger.info(f"🎯 Job resource name: {response.name}")
-                    
-                    # Extract job ID from response
-                    vertex_job_id = response.name.split('/')[-1]
-                    logger.info(f"🆔 Vertex AI job ID: {vertex_job_id}")
-                    
-                    return job_id
-                    
-                except Exception as submission_error:
-                    logger.error(f"❌ Job submission failed: {submission_error}")
-                    logger.error(f"❌ Submission error type: {type(submission_error).__name__}")
-                    logger.error(f"❌ Submission error details: {str(submission_error)}")
-                    
-                    # Check if it's a timeout or network issue
-                    if "timeout" in str(submission_error).lower() or "deadline" in str(submission_error).lower():
-                        logger.error("🕐 Job submission timed out - likely network connectivity issue")
-                    elif "permission" in str(submission_error).lower() or "auth" in str(submission_error).lower():
-                        logger.error("🔐 Authentication/permission issue detected")
-                    elif "quota" in str(submission_error).lower():
-                        logger.error("📊 Quota limit reached")
-                    
-                    raise submission_error
+                return self.submit_job_with_fallback(job_id)
                 
             except Exception as vertex_error:
                 logger.error(f"❌ Vertex AI job creation failed: {vertex_error}")
@@ -311,45 +357,10 @@ class VertexGPUJobService:
             self.create_job_config(job_id, job_data)
             logger.info("✅ Job config uploaded")
             
-            # Submit the job
+            # Submit the job with GPU fallback logic
             logger.info("🚀 Creating Vertex AI CustomJob...")
             try:
-                # Create job specification using GAPIC format
-                logger.info("📋 Building job specification...")
-                job_spec = self.create_job_spec(job_id)
-                logger.info("✅ Job specification built")
-                
-                # Submit job with timeout using GAPIC client
-                logger.info("🎬 Submitting job to Vertex AI with 60s timeout...")
-                try:
-                    response = self.job_client.create_custom_job(
-                        parent=f"projects/{self.project_id}/locations/{self.region}",
-                        custom_job=job_spec,
-                        timeout=60  # 60 second timeout for job submission
-                    )
-                    logger.info(f"✅ Job submitted successfully: {response.name}")
-                    logger.info(f"🎯 Job resource name: {response.name}")
-                    
-                    # Extract job ID from response
-                    vertex_job_id = response.name.split('/')[-1]
-                    logger.info(f"🆔 Vertex AI job ID: {vertex_job_id}")
-                    
-                    return job_id
-                    
-                except Exception as submission_error:
-                    logger.error(f"❌ Job submission failed: {submission_error}")
-                    logger.error(f"❌ Submission error type: {type(submission_error).__name__}")
-                    logger.error(f"❌ Submission error details: {str(submission_error)}")
-                    
-                    # Check if it's a timeout or network issue
-                    if "timeout" in str(submission_error).lower() or "deadline" in str(submission_error).lower():
-                        logger.error("🕐 Job submission timed out - likely network connectivity issue")
-                    elif "permission" in str(submission_error).lower() or "auth" in str(submission_error).lower():
-                        logger.error("🔐 Authentication/permission issue detected")
-                    elif "quota" in str(submission_error).lower():
-                        logger.error("📊 Quota limit reached")
-                    
-                    raise submission_error
+                return self.submit_job_with_fallback(job_id)
                 
             except Exception as vertex_error:
                 logger.error(f"❌ Vertex AI job creation failed: {vertex_error}")

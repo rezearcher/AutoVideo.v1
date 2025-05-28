@@ -38,10 +38,10 @@ def get_gpu_quota(project: str, region: str, gpu_type: str = "T4") -> Optional[D
         from google.auth import default
         from googleapiclient.discovery import build
         
-        # Map GPU types to metric names
+        # Map GPU types to Compute Engine quota metric names
         metric_map = {
-            "T4": "aiplatform.googleapis.com/custom_model_training_nvidia_t4_gpus",
-            "L4": "aiplatform.googleapis.com/custom_model_training_nvidia_l4_gpus"
+            "T4": "NVIDIA_T4_GPUS",
+            "L4": "NVIDIA_L4_GPUS"
         }
         
         target_metric = metric_map.get(gpu_type)
@@ -54,7 +54,7 @@ def get_gpu_quota(project: str, region: str, gpu_type: str = "T4") -> Optional[D
         region_info = compute.regions().get(project=project, region=region).execute()
         
         for quota in region_info.get('quotas', []):
-            if target_metric in quota.get('metric', ''):
+            if quota.get('metric') == target_metric:
                 usage = quota.get('usage', 0)
                 limit = quota.get('limit', 0)
                 available = limit - usage

@@ -382,8 +382,8 @@ async def check_gpu_quota():
         
         # GPU metrics to check
         gpu_metrics = [
-            'aiplatform.googleapis.com/custom_model_training_nvidia_l4_gpus',
-            'aiplatform.googleapis.com/custom_model_training_nvidia_t4_gpus'
+            'NVIDIA_L4_GPUS',
+            'NVIDIA_T4_GPUS'
         ]
         
         creds, _ = default()
@@ -400,13 +400,13 @@ async def check_gpu_quota():
                 
                 for quota in region_info.get('quotas', []):
                     metric = quota.get('metric', '')
-                    if any(gpu_metric in metric for gpu_metric in gpu_metrics):
+                    if metric in gpu_metrics:
                         usage = quota.get('usage', 0)
                         limit = quota.get('limit', 0)
                         available = limit - usage
                         
                         # Determine GPU type from metric
-                        gpu_type = "L4" if "l4" in metric else "T4" if "t4" in metric else "Unknown"
+                        gpu_type = "L4" if "L4" in metric else "T4" if "T4" in metric else "Unknown"
                         
                         region_quotas[gpu_type] = {
                             'usage': usage,

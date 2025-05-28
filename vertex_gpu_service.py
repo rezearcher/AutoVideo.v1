@@ -22,27 +22,27 @@ _vertex_initialized = False
 # Region-to-GPU-Machine mappings based on actual GCP availability discovery
 REGION_GPU_MACHINE_MAP = {
     "us-central1": {
-        "NVIDIA_L4": "g2-standard-4",
+        "NVIDIA_L4": "g2-standard-8",
         "NVIDIA_TESLA_T4": "n1-standard-4",
         "CPU": "n1-standard-8"
     },
     "us-west1": {
-        "NVIDIA_L4": "g2-standard-4", 
+        "NVIDIA_L4": "g2-standard-8", 
         "NVIDIA_TESLA_T4": "n1-standard-4",
         "CPU": "n1-standard-8"
     },
     "us-east1": {
-        "NVIDIA_L4": "g2-standard-4",
+        "NVIDIA_L4": "g2-standard-8",
         "NVIDIA_TESLA_T4": "n1-standard-4", 
         "CPU": "n1-standard-8"
     },
     "europe-west1": {
-        "NVIDIA_L4": "g2-standard-4",  # Will validate dynamically
+        "NVIDIA_L4": "g2-standard-8",  # Will validate dynamically
         "NVIDIA_TESLA_T4": "n1-standard-4",
         "CPU": "n1-standard-8"
     },
     "asia-southeast1": {
-        "NVIDIA_L4": "g2-standard-4",  # Will validate dynamically
+        "NVIDIA_L4": "g2-standard-8",  # Will validate dynamically
         "NVIDIA_TESLA_T4": "n1-standard-4",
         "CPU": "n1-standard-8"
     }
@@ -169,7 +169,9 @@ def discover_gpu_machine_compatibility(project_id: str, region: str) -> Dict[str
         compatibility = {"CPU": "n1-standard-8"}  # CPU always available
         
         if 'NVIDIA_L4' in available_gpus:
-            if 'g2-standard-4' in available_machines:
+            if 'g2-standard-8' in available_machines:
+                compatibility['NVIDIA_L4'] = 'g2-standard-8'
+            elif 'g2-standard-4' in available_machines:
                 compatibility['NVIDIA_L4'] = 'g2-standard-4'
             elif 'n2-standard-4' in available_machines:
                 compatibility['NVIDIA_L4'] = 'n2-standard-4'

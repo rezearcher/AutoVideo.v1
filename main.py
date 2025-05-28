@@ -498,8 +498,8 @@ def status():
         
         # Send status metrics
         send_custom_metric("status_check", 1.0, {
-            "generating": "true" if is_generating else "false",
-            "initialized": "true" if is_initialized else "false"
+            "generating": 1.0 if is_generating else 0.0,
+            "initialized": 1.0 if is_initialized else 0.0
         })
         
         return jsonify(status_data)

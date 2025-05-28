@@ -50,13 +50,15 @@ class VertexGPUJobService:
             self.bucket = self.storage_client.bucket(self.bucket_name)
             logger.info("✅ GCS client initialized successfully")
             
-            # GPU job configuration
+            # GPU job configuration - using preemptible T4 for cost savings and higher quota
             self.container_image = f"gcr.io/{project_id}/av-gpu-job"
             self.machine_type = "n1-standard-4"
+            # Try preemptible T4 first for higher quota availability and 80% cost savings
             self.accelerator_type = "NVIDIA_TESLA_T4"
             self.accelerator_count = 1
+            self.use_preemptible = True  # Enable preemptible instances for cost savings
             
-            logger.info(f"🎯 GPU config: {self.container_image}, {self.machine_type}, {self.accelerator_type}")
+            logger.info(f"🎯 GPU config: {self.container_image}, {self.machine_type}, {self.accelerator_type} (preemptible: {self.use_preemptible})")
             logger.info("✅ VertexGPUJobService initialized successfully")
             
         except Exception as e:
@@ -160,6 +162,44 @@ class VertexGPUJobService:
             logger.error(f"Failed to upload job config: {e}")
             raise
     
+    def create_job_spec(self, job_id: str) -> Dict[str, Any]:
+        """Create job specification with preemptible GPU settings for cost savings and higher quota"""
+        return {
+            "display_name": f"av-gpu-job-{job_id}",
+            "job_spec": {
+                "worker_pool_specs": [
+                    {
+                        "machine_spec": {
+                            "machine_type": self.machine_type,
+                            "accelerator_type": self.accelerator_type,
+                            "accelerator_count": self.accelerator_count,
+                        },
+                        "spot": self.use_preemptible,  # Enable preemptible/spot instances
+                        "replica_count": 1,
+                        "disk_spec": {
+                            "boot_disk_type": "pd-ssd",
+                            "boot_disk_size_gb": 100
+                        },
+                        "container_spec": {
+                            "image_uri": self.container_image,
+                            "args": [
+                                "--job-id", job_id,
+                                "--project-id", self.project_id,
+                                "--bucket-name", self.bucket_name
+                            ],
+                            "env": [
+                                {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
+                            ]
+                        },
+                    }
+                ],
+                # Enable preemptible instances for 80% cost savings and higher quota availability
+                "scheduling": {
+                    "restart_job_on_worker_restart": True
+                }
+            }
+        }
+    
     def submit_gpu_job(self, script: str, voice_settings: Dict[str, Any], 
                       video_settings: Dict[str, Any], image_paths: List[str] = None, 
                       audio_path: str = None) -> str:
@@ -190,41 +230,14 @@ class VertexGPUJobService:
             try:
                 # Create job specification using GAPIC format
                 logger.info("📋 Building job specification...")
-                parent = f"projects/{self.project_id}/locations/{self.region}"
-                
-                job_spec = {
-                    "display_name": f"av-gpu-job-{job_id}",
-                    "job_spec": {
-                        "worker_pool_specs": [
-                            {
-                                "machine_spec": {
-                                    "machine_type": self.machine_type,
-                                    "accelerator_type": self.accelerator_type,
-                                    "accelerator_count": self.accelerator_count,
-                                },
-                                "replica_count": 1,
-                                "container_spec": {
-                                    "image_uri": self.container_image,
-                                    "args": [
-                                        "--job-id", job_id,
-                                        "--project-id", self.project_id,
-                                        "--bucket-name", self.bucket_name
-                                    ],
-                                    "env": [
-                                        {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
-                                    ]
-                                },
-                            }
-                        ]
-                    }
-                }
+                job_spec = self.create_job_spec(job_id)
                 logger.info("✅ Job specification built")
                 
                 # Submit job with timeout using GAPIC client
                 logger.info("🎬 Submitting job to Vertex AI with 60s timeout...")
                 try:
                     response = self.job_client.create_custom_job(
-                        parent=parent,
+                        parent=f"projects/{self.project_id}/locations/{self.region}",
                         custom_job=job_spec,
                         timeout=60  # 60 second timeout for job submission
                     )
@@ -299,41 +312,14 @@ class VertexGPUJobService:
             try:
                 # Create job specification using GAPIC format
                 logger.info("📋 Building job specification...")
-                parent = f"projects/{self.project_id}/locations/{self.region}"
-                
-                job_spec = {
-                    "display_name": f"av-gpu-job-{job_id}",
-                    "job_spec": {
-                        "worker_pool_specs": [
-                            {
-                                "machine_spec": {
-                                    "machine_type": self.machine_type,
-                                    "accelerator_type": self.accelerator_type,
-                                    "accelerator_count": self.accelerator_count,
-                                },
-                                "replica_count": 1,
-                                "container_spec": {
-                                    "image_uri": self.container_image,
-                                    "args": [
-                                        "--job-id", job_id,
-                                        "--project-id", self.project_id,
-                                        "--bucket-name", self.bucket_name
-                                    ],
-                                    "env": [
-                                        {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
-                                    ]
-                                },
-                            }
-                        ]
-                    }
-                }
+                job_spec = self.create_job_spec(job_id)
                 logger.info("✅ Job specification built")
                 
                 # Submit job with timeout using GAPIC client
                 logger.info("🎬 Submitting job to Vertex AI with 60s timeout...")
                 try:
                     response = self.job_client.create_custom_job(
-                        parent=parent,
+                        parent=f"projects/{self.project_id}/locations/{self.region}",
                         custom_job=job_spec,
                         timeout=60  # 60 second timeout for job submission
                     )

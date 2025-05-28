@@ -23,7 +23,8 @@ class MonitoringSetup:
         # Initialize clients
         self.monitoring_client = monitoring_v3.AlertPolicyServiceClient()
         self.notification_client = monitoring_v3.NotificationChannelServiceClient()
-        self.dashboard_client = monitoring_v3.DashboardServiceClient()
+        # Note: Dashboard functionality requires a separate package
+        # self.dashboard_client = monitoring_v3.DashboardServiceClient()  # Not available
         self.metric_client = monitoring_v3.MetricServiceClient()
         self.logging_client = logging_v2.Client(project=project_id)
 
@@ -263,59 +264,65 @@ class MonitoringSetup:
                 print(f"Error creating log metric '{metric_config['name']}': {e}")
 
     def create_dashboard(self, dashboard_config: Dict):
-        """Create monitoring dashboard"""
-
-        try:
-            # Check if dashboard already exists
-            existing_dashboards = self.dashboard_client.list_dashboards(
-                parent=self.project_name
-            )
-
-            dashboard_exists = False
-            for existing in existing_dashboards:
-                if existing.display_name == dashboard_config["name"]:
-                    dashboard_exists = True
-                    print(f"Dashboard '{dashboard_config['name']}' already exists")
-                    break
-
-            if not dashboard_exists:
-                # Create dashboard widgets
-                widgets = []
-                for widget_config in dashboard_config["widgets"]:
-                    # This is a simplified widget creation - you may need to adjust based on specific widget types
-                    widget = {
-                        "title": widget_config["title"],
-                        "xyChart": {
-                            "dataSets": [
-                                {
-                                    "timeSeriesQuery": {
-                                        "timeSeriesFilter": {
-                                            "filter": widget_config.get("filter", ""),
-                                            "aggregation": {
-                                                "alignmentPeriod": "60s",
-                                                "perSeriesAligner": "ALIGN_RATE",
-                                            },
-                                        }
-                                    }
-                                }
-                            ]
-                        },
-                    }
-                    widgets.append(widget)
-
-                dashboard = monitoring_v3.Dashboard(
-                    display_name=dashboard_config["name"],
-                    grid_layout=monitoring_v3.GridLayout(widgets=widgets),
-                )
-
-                created_dashboard = self.dashboard_client.create_dashboard(
-                    parent=self.project_name, dashboard=dashboard
-                )
-
-                print(f"Created dashboard: {dashboard_config['name']}")
-
-        except Exception as e:
-            print(f"Error creating dashboard '{dashboard_config['name']}': {e}")
+        """Create monitoring dashboard - DISABLED: DashboardServiceClient not available in monitoring_v3"""
+        print(f"⚠️  Dashboard creation skipped: '{dashboard_config['name']}' - DashboardServiceClient requires separate package")
+        return
+        
+        # The following code is commented out because DashboardServiceClient is not available
+        # in the google.cloud.monitoring_v3 module. It requires a separate package:
+        # pip install google-cloud-monitoring-dashboards
+        
+        # try:
+        #     # Check if dashboard already exists
+        #     existing_dashboards = self.dashboard_client.list_dashboards(
+        #         parent=self.project_name
+        #     )
+        #
+        #     dashboard_exists = False
+        #     for existing in existing_dashboards:
+        #         if existing.display_name == dashboard_config["name"]:
+        #             dashboard_exists = True
+        #             print(f"Dashboard '{dashboard_config['name']}' already exists")
+        #             break
+        #
+        #     if not dashboard_exists:
+        #         # Create dashboard widgets
+        #         widgets = []
+        #         for widget_config in dashboard_config["widgets"]:
+        #             # This is a simplified widget creation - you may need to adjust based on specific widget types
+        #             widget = {
+        #                 "title": widget_config["title"],
+        #                 "xyChart": {
+        #                     "dataSets": [
+        #                         {
+        #                             "timeSeriesQuery": {
+        #                                 "timeSeriesFilter": {
+        #                                     "filter": widget_config.get("filter", ""),
+        #                                     "aggregation": {
+        #                                         "alignmentPeriod": "60s",
+        #                                         "perSeriesAligner": "ALIGN_RATE",
+        #                                     },
+        #                                 }
+        #                             }
+        #                         }
+        #                     ]
+        #                 },
+        #             }
+        #             widgets.append(widget)
+        #
+        #         dashboard = monitoring_v3.Dashboard(
+        #             display_name=dashboard_config["name"],
+        #             grid_layout=monitoring_v3.GridLayout(widgets=widgets),
+        #         )
+        #
+        #         created_dashboard = self.dashboard_client.create_dashboard(
+        #             parent=self.project_name, dashboard=dashboard
+        #         )
+        #
+        #         print(f"Created dashboard: {dashboard_config['name']}")
+        #
+        # except Exception as e:
+        #     print(f"Error creating dashboard '{dashboard_config['name']}': {e}")
 
     def setup_monitoring(self, config_file: str):
         """Main method to set up all monitoring components"""

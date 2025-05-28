@@ -79,16 +79,16 @@ class VertexGPUJobService:
         
         # Define fallback configurations in priority order
         self.fallback_configs = [
-            # Primary: L4 in us-central1
-            {"region": "us-central1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "n1-standard-4"},
-            # Fallback 1: T4 in us-central1 
+            # Primary: L4 in us-central1 (L4 requires g2-standard-4)
+            {"region": "us-central1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4"},
+            # Fallback 1: T4 in us-central1 (T4 works with n1-standard-4)
             {"region": "us-central1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4"},
             # Fallback 2: L4 in us-west1
-            {"region": "us-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "n1-standard-4"},
+            {"region": "us-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4"},
             # Fallback 3: T4 in us-west1
             {"region": "us-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4"},
             # Fallback 4: L4 in us-east1
-            {"region": "us-east1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "n1-standard-4"},
+            {"region": "us-east1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4"},
             # Fallback 5: T4 in us-east1
             {"region": "us-east1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4"},
             # Final fallback: CPU only

@@ -416,11 +416,13 @@ async def check_gpu_quota():
                         
                         # Add to available options if quota is available
                         if available > 0:
+                            # Use correct machine type for each GPU type
+                            machine_type = 'g2-standard-4' if gpu_type == 'L4' else 'n1-standard-4'
                             available_options.append({
                                 'region': region,
                                 'gpu_type': gpu_type,
                                 'available_gpus': available,
-                                'machine_type': 'n1-standard-4' if gpu_type == 'T4' else 'g2-standard-4'
+                                'machine_type': machine_type
                             })
                 
                 quota_info[region] = region_quotas

@@ -391,6 +391,7 @@ async def check_gpu_quota():
         
         quota_info = {}
         available_options = []
+        cpu_options = []
         overall_status = "healthy"
         
         for region in regions_to_check:
@@ -425,6 +426,14 @@ async def check_gpu_quota():
                                 'machine_type': machine_type
                             })
                 
+                # Add CPU option for each region (CPU is generally always available)
+                cpu_options.append({
+                    'region': region,
+                    'gpu_type': 'CPU',
+                    'machine_type': 'n1-standard-8',
+                    'note': 'CPU fallback - high availability'
+                })
+                
                 quota_info[region] = region_quotas
                 
             except Exception as e:
@@ -444,15 +453,25 @@ async def check_gpu_quota():
             x['region']  # Then alphabetically
         ))
         
+        # Sort CPU options by region preference
+        cpu_options.sort(key=lambda x: (
+            x['region'] != 'us-central1',  # us-central1 first
+            x['region']  # Then alphabetically
+        ))
+        
+        # Build recommendation including fallback chain
+        primary_recommendation = available_options[0] if available_options else cpu_options[0]
+        
         return {
             "status": overall_status,
             "quota_details": quota_info,
-            "available_options": available_options,
-            "recommendation": available_options[0] if available_options else {
-                "region": "us-central1",
-                "gpu_type": "CPU",
-                "machine_type": "n1-standard-8",
-                "note": "No GPU quota available, fallback to CPU"
+            "available_gpu_options": available_options,
+            "cpu_fallback_options": cpu_options,
+            "recommendation": primary_recommendation,
+            "fallback_chain": {
+                "gpu_options": available_options,
+                "cpu_options": cpu_options,
+                "total_fallbacks": len(available_options) + len(cpu_options)
             },
             "timestamp": time.time()
         }

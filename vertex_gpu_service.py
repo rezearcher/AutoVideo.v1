@@ -91,8 +91,10 @@ class VertexGPUJobService:
             {"region": "us-east1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4"},
             # Fallback 5: T4 in us-east1
             {"region": "us-east1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4"},
-            # Final fallback: CPU only
-            {"region": "us-central1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8"}
+            # CPU Fallbacks: Try different regions for CPU when GPU unavailable
+            {"region": "us-central1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8"},
+            {"region": "us-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8"},
+            {"region": "us-east1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8"}
         ]
         
         # Initialize with primary region
@@ -114,12 +116,15 @@ class VertexGPUJobService:
         for i, config in enumerate(self.fallback_configs):
             region = config["region"]
             gpu_type = config["gpu_type"]
+            machine_type = config["machine_type"]
             
             if gpu_type is None:  # CPU-only fallback
-                logger.info(f"✅ Fallback {i+1}: CPU-only in {region} (always available)")
+                logger.info(f"✅ Fallback {i+1}: CPU-only ({machine_type}) in {region}")
+                # CPU is generally always available, but we could add CPU quota checking here if needed
+                # For now, we'll trust that CPU resources are more readily available
                 return config
                 
-            # Check quota for this configuration
+            # Check quota for this GPU configuration
             quota_info = get_gpu_quota(self.project_id, region, gpu_type)
             
             if quota_info and quota_info.get('available', 0) > 0:
@@ -131,7 +136,7 @@ class VertexGPUJobService:
         
         # Should never reach here due to CPU fallback, but just in case
         logger.error("🚨 All fallback configurations exhausted!")
-        return self.fallback_configs[-1]  # Return CPU fallback
+        return self.fallback_configs[-1]  # Return last CPU fallback
 
     def upload_assets_to_gcs(self, job_id: str, image_paths: List[str], audio_path: str) -> Dict[str, Any]:
         """Upload images and audio to GCS with retry logic"""
@@ -260,6 +265,16 @@ class VertexGPUJobService:
         gpu_count = config["gpu_count"]
         machine_type = config["machine_type"]
         
+        # For non-primary regions, we need to ensure we have regional bucket access
+        regional_bucket_name = self.bucket_name
+        if region != self.primary_region:
+            # Use regional bucket naming for cross-region jobs
+            if "central1" in self.bucket_name:
+                regional_bucket_name = self.bucket_name.replace("central1", region.replace("us-", ""))
+            else:
+                regional_bucket_name = f"{self.project_id}-vertex-staging-{region.replace('us-', '')}"
+            logger.info(f"🌍 Using regional bucket for {region}: {regional_bucket_name}")
+        
         # Create job labels
         job_labels = {
             "pipeline": "autovideo",
@@ -279,6 +294,17 @@ class VertexGPUJobService:
         try:
             logger.info(f"🚀 Submitting job to {region} with {gpu_type or 'CPU'}")
             
+            # For cross-region deployments, we need to reinitialize Vertex AI for the target region
+            if region != self.primary_region:
+                logger.info(f"🌍 Switching to region {region} for job submission")
+                staging_bucket = f"gs://{regional_bucket_name}"
+                # Temporarily reinitialize for this region
+                aiplatform.init(
+                    project=self.project_id,
+                    location=region,
+                    staging_bucket=staging_bucket
+                )
+            
             # Prepare worker pool spec
             worker_pool_spec = {
                 "machine_spec": {
@@ -291,7 +317,7 @@ class VertexGPUJobService:
                         "python", "/app/gpu_worker.py",
                         "--job-id", job_id,
                         "--project-id", self.project_id,
-                        "--bucket-name", self.bucket_name,
+                        "--bucket-name", self.bucket_name,  # Use original bucket for data access
                         "--config-url", job_config_url
                     ],
                     "env": [
@@ -311,9 +337,9 @@ class VertexGPUJobService:
                 
                 worker_pool_spec["machine_spec"]["accelerator_type"] = gpu_type_map[gpu_type]
                 worker_pool_spec["machine_spec"]["accelerator_count"] = gpu_count
-                logger.info(f"🎮 Using {gpu_count}x {gpu_type_map[gpu_type]} on {machine_type}")
+                logger.info(f"🎮 Using {gpu_count}x {gpu_type_map[gpu_type]} on {machine_type} in {region}")
             else:
-                logger.info(f"🖥️ Using CPU-only: {machine_type}")
+                logger.info(f"🖥️ Using CPU-only: {machine_type} in {region}")
             
             # Create and submit the CustomJob
             job = aiplatform.CustomJob(
@@ -326,15 +352,38 @@ class VertexGPUJobService:
             
             job.submit()
             
-            logger.info(f"✅ Job submitted successfully: {job.resource_name}")
+            logger.info(f"✅ Job submitted successfully to {region}: {job.resource_name}")
             logger.info(f"🎯 Resource name: {job.resource_name}")
             logger.info(f"🏷️ Labels: {job_labels}")
+            
+            # If we switched regions, switch back to primary for future operations
+            if region != self.primary_region:
+                logger.info(f"🏠 Switching back to primary region {self.primary_region}")
+                primary_staging_bucket = f"gs://{self.bucket_name}"
+                aiplatform.init(
+                    project=self.project_id,
+                    location=self.primary_region,
+                    staging_bucket=primary_staging_bucket
+                )
             
             return job_id
             
         except Exception as e:
             error_str = str(e)
-            logger.error(f"❌ Job submission failed: {error_str}")
+            logger.error(f"❌ Job submission failed in {region}: {error_str}")
+            
+            # If we switched regions for this attempt, make sure we switch back
+            if region != self.primary_region:
+                try:
+                    logger.info(f"🏠 Switching back to primary region {self.primary_region} after error")
+                    primary_staging_bucket = f"gs://{self.bucket_name}"
+                    aiplatform.init(
+                        project=self.project_id,
+                        location=self.primary_region,
+                        staging_bucket=primary_staging_bucket
+                    )
+                except Exception as init_error:
+                    logger.warning(f"⚠️ Failed to switch back to primary region: {init_error}")
             
             # Check if this is a quota error and we should try next fallback
             if "quota" in error_str.lower() or "resource exhausted" in error_str.lower():

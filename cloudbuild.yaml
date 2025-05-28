@@ -1,0 +1,103 @@
+steps:
+  # Step 1: Run unit tests
+  - name: 'python:3.11'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-mock
+        python -m pytest test_vertex_gpu_compatibility.py -v --tb=short
+    env:
+      - 'PYTHONPATH=.'
+    id: 'unit-tests'
+
+  # Step 2: Run linting
+  - name: 'python:3.11'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install flake8 black isort
+        echo "Running Black formatter check..."
+        black --check --diff . || echo "Black formatting issues found"
+        echo "Running isort import sorting check..."
+        isort --check-only --diff . || echo "Import sorting issues found"
+        echo "Running flake8 linter..."
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    id: 'linting'
+
+  # Step 3: Run security checks
+  - name: 'python:3.11'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install bandit safety
+        echo "Running Bandit security linter..."
+        bandit -r . -f json -o bandit-report.json || echo "Security issues found"
+        echo "Running Safety dependency check..."
+        safety check --json --output safety-report.json || echo "Dependency vulnerabilities found"
+    id: 'security'
+
+  # Step 4: Run integration tests (only on main branch)
+  - name: 'python:3.11'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "$BRANCH_NAME" = "main" ]; then
+          pip install -r requirements.txt
+          pip install pytest
+          echo "Running integration tests..."
+          python -m pytest test_vertex_gpu_compatibility.py::TestGPUCompatibilityIntegration -v
+        else
+          echo "Skipping integration tests (not main branch)"
+        fi
+    env:
+      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+      - 'RUN_INTEGRATION_TESTS=1'
+      - 'PYTHONPATH=.'
+    id: 'integration-tests'
+
+  # Step 5: Build and deploy (only if tests pass)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'av-app'
+      - '--source=.'
+      - '--region=us-central1'
+      - '--allow-unauthenticated'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--timeout=3600'
+      - '--concurrency=1'
+      - '--max-instances=1'
+    id: 'deploy'
+
+  # Step 6: Post-deployment health check
+  - name: 'gcr.io/cloud-builders/curl'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Waiting for deployment to be ready..."
+        sleep 30
+        echo "Running post-deployment health checks..."
+        curl -f https://av-app-$PROJECT_NUMBER.us-central1.run.app/health/machine-types || exit 1
+        echo "Health check passed!"
+    id: 'health-check'
+
+# Build configuration
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+# Timeout for the entire build
+timeout: '1200s'
+
+# Substitutions for environment variables
+substitutions:
+  _DEPLOY_REGION: 'us-central1'
+  _SERVICE_NAME: 'av-app' 

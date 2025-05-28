@@ -1,0 +1,135 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-mock
+    
+    - name: Run GPU compatibility unit tests
+      run: |
+        python -m pytest test_vertex_gpu_compatibility.py -v --tb=short
+      env:
+        PYTHONPATH: .
+    
+    - name: Run unit tests with coverage
+      run: |
+        python -m pytest test_vertex_gpu_compatibility.py --cov=vertex_gpu_service --cov-report=xml --cov-report=term-missing
+      env:
+        PYTHONPATH: .
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort
+    
+    - name: Run Black formatter check
+      run: black --check --diff .
+    
+    - name: Run isort import sorting check
+      run: isort --check-only --diff .
+    
+    - name: Run flake8 linter
+      run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+    
+    - name: Run Bandit security linter
+      run: bandit -r . -f json -o bandit-report.json || true
+    
+    - name: Run Safety dependency check
+      run: safety check --json --output safety-report.json || true
+
+  integration-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, lint]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest
+    
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+    
+    - name: Run integration tests
+      run: |
+        python -m pytest test_vertex_gpu_compatibility.py::TestGPUCompatibilityIntegration -v
+      env:
+        GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+        RUN_INTEGRATION_TESTS: 1
+        PYTHONPATH: . 

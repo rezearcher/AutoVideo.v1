@@ -278,8 +278,13 @@ def openai_health_check():
 def health_check_vertex_ai():
     """Test Vertex AI connectivity through PSC endpoint"""
     try:
+        import google.auth
         from google.cloud import aiplatform
         from google.cloud.aiplatform_v1.services.job_service import JobServiceClient
+        
+        # Get and log the actual credentials being used
+        creds, project = google.auth.default()
+        logger.info(f"Using credentials: {getattr(creds, 'service_account_email', 'unknown')} / project: {project}")
         
         # Get project and location from environment
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
@@ -288,8 +293,10 @@ def health_check_vertex_ai():
         # Initialize Vertex AI
         aiplatform.init(project=project_id, location=location)
         
-        # Test connection by listing custom jobs (should work even if empty)
-        client = JobServiceClient()
+        # Test connection by listing custom jobs with explicit endpoint
+        client = JobServiceClient(
+            client_options={"api_endpoint": f"{location}-aiplatform.googleapis.com"}
+        )
         parent = f"projects/{project_id}/locations/{location}"
         
         # Create the request object with correct syntax
@@ -308,11 +315,12 @@ def health_check_vertex_ai():
             'message': 'Vertex AI accessible through PSC endpoint',
             'project_id': project_id,
             'location': location,
+            'service_account': getattr(creds, 'service_account_email', 'unknown'),
             'timestamp': datetime.utcnow().isoformat()
         })
         
     except Exception as e:
-        logger.error(f"Vertex AI health check failed: {str(e)}")
+        logger.error(f"Vertex AI health check failed: {str(e)}", exc_info=True)
         return jsonify({
             'status': 'unhealthy',
             'vertex_ai': 'failed',

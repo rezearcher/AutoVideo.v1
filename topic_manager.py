@@ -1,8 +1,9 @@
 import json
-import random
-import os
 import logging
+import os
+import random
 from datetime import datetime, timedelta
+
 from dotenv import load_dotenv
 from openai import OpenAI
 

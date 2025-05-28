@@ -1,16 +1,14 @@
-import os
 import logging
-from moviepy.editor import (
-    VideoFileClip,
-    ImageClip,
-    concatenate_videoclips,
-    AudioFileClip,
-)
-from moviepy.video.fx.all import resize
-from caption_generator import create_caption_images, add_captions_to_video
-from PIL import Image, ImageDraw, ImageFont
+import os
 import textwrap
 from datetime import datetime
+
+from moviepy.editor import (AudioFileClip, ImageClip, VideoFileClip,
+                            concatenate_videoclips)
+from moviepy.video.fx.all import resize
+from PIL import Image, ImageDraw, ImageFont
+
+from caption_generator import add_captions_to_video, create_caption_images
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

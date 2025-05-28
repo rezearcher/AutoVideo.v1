@@ -1,6 +1,7 @@
-from openai import OpenAI
-import os
 import logging
+import os
+
+from openai import OpenAI
 
 # Global client variable for lazy initialization
 client = None

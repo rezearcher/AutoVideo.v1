@@ -1,6 +1,7 @@
+import logging
 import os
 import sys
-import logging
+
 from token_manager import TokenManager
 
 # Set up logging

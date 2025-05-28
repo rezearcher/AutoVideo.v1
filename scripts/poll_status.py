@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-import requests
-import time
 import json
 import os
-from datetime import datetime
 import sys
+import time
+from datetime import datetime
+
+import requests
 
 # Use environment variable with fallback to current URL for safety
 SERVICE_URL = os.getenv(

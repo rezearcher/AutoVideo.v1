@@ -3,16 +3,16 @@ Vertex AI GPU Job Service
 Handles triggering and monitoring GPU video processing jobs using Google's best practices
 """
 
-import os
 import json
-import uuid
 import logging
-from typing import Dict, Any, Optional, List
-from google.cloud import aiplatform
-from google.cloud import storage
+import os
 import time
+import uuid
+from typing import Any, Dict, List, Optional
+
 import google.auth
 from google.auth.transport.requests import Request
+from google.cloud import aiplatform, storage
 
 logger = logging.getLogger(__name__)
 
@@ -136,8 +136,8 @@ def get_multi_region_quota_status(
 def discover_gpu_machine_compatibility(project_id: str, region: str) -> Dict[str, str]:
     """Dynamically discover GPU and machine type compatibility for a region"""
     try:
-        from googleapiclient.discovery import build
         from google.auth import default
+        from googleapiclient.discovery import build
 
         creds, _ = default()
         compute = build("compute", "v1", credentials=creds, cache_discovery=False)

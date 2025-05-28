@@ -1,5 +1,7 @@
-import pytest
 import os
+
+import pytest
+
 from topic_manager import TopicManager
 
 

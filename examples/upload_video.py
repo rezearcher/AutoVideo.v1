@@ -10,7 +10,7 @@ from pathlib import Path
 # Add parent directory to path to import the youtube_uploader module
 sys.path.append(str(Path(__file__).parent.parent))
 
-from youtube_uploader import upload_video, YouTubeConfig
+from youtube_uploader import YouTubeConfig, upload_video
 
 
 def main():

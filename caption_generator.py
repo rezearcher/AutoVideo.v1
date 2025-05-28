@@ -1,8 +1,9 @@
-import moviepy.editor as mpy
-from PIL import Image, ImageDraw, ImageFont
-import os
-import numpy as np
 import logging
+import os
+
+import moviepy.editor as mpy
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

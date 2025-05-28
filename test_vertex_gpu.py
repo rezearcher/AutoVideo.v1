@@ -4,9 +4,10 @@ Test script for Vertex AI GPU service integration
 Verifies that the GPU service can be initialized and is ready for job submission
 """
 
+import logging
 import os
 import sys
-import logging
+
 from vertex_gpu_service import VertexGPUJobService
 
 # Configure logging

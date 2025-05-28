@@ -4,10 +4,10 @@ Minimal test script to isolate Vertex AI client initialization issues.
 This helps identify if the hang occurs during import, aiplatform.init(), or client creation.
 """
 
+import logging
 import os
 import sys
 import time
-import logging
 
 # Set up logging
 logging.basicConfig(
@@ -30,9 +30,9 @@ def test_vertex_ai_init():
         logger.info("1️⃣ Testing imports...")
         start_time = time.time()
 
+        import google.auth
         from google.cloud import aiplatform
         from google.cloud.aiplatform import gapic
-        import google.auth
 
         import_time = time.time() - start_time
         logger.info(f"✅ Imports successful in {import_time:.2f}s")

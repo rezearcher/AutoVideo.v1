@@ -3,14 +3,13 @@ Unit tests for Vertex AI GPU compatibility mapping
 Validates that static mappings align with actual GCP availability
 """
 
-import unittest
 import os
-from unittest.mock import patch, MagicMock
-from vertex_gpu_service import (
-    REGION_GPU_MACHINE_MAP,
-    discover_gpu_machine_compatibility,
-    get_machine_type_for_gpu,
-)
+import unittest
+from unittest.mock import MagicMock, patch
+
+from vertex_gpu_service import (REGION_GPU_MACHINE_MAP,
+                                discover_gpu_machine_compatibility,
+                                get_machine_type_for_gpu)
 
 
 class TestGPUCompatibilityMapping(unittest.TestCase):

@@ -1,7 +1,8 @@
-import unittest
-import os
 import json
+import os
+import unittest
 from datetime import datetime, timedelta
+
 from topic_manager import TopicManager
 
 

@@ -1,20 +1,23 @@
 # Auto Video Generator - Cloud Native
 # Updated: 2025-05-28 - GPU compatibility fixes included
+import logging
 import os
 import sys
-import logging
-from flask import Flask, jsonify, request
-from story_generator import generate_story, extract_image_prompts, get_openai_client
-from image_generator import generate_images
-from voiceover_generator import generate_voiceover
-from youtube_uploader import upload_video
-from datetime import datetime, timedelta
 import threading
 import time
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+import google.auth
+from flask import Flask, jsonify, request
+
+from image_generator import generate_images
+from story_generator import (extract_image_prompts, generate_story,
+                             get_openai_client)
 from timing_metrics import TimingMetrics
 from topic_manager import TopicManager
-from collections import defaultdict
-import google.auth
+from voiceover_generator import generate_voiceover
+from youtube_uploader import upload_video
 
 # Optional import for local video processing fallback
 try:
@@ -28,10 +31,10 @@ except ImportError as e:
 
 # Google Cloud Monitoring imports
 try:
-    from google.cloud import monitoring_v3
-    from google.cloud import logging as cloud_logging
-    from google.cloud import error_reporting
     import google.cloud.logging
+    from google.cloud import error_reporting
+    from google.cloud import logging as cloud_logging
+    from google.cloud import monitoring_v3
 
     CLOUD_MONITORING_AVAILABLE = True
 except ImportError:
@@ -480,7 +483,8 @@ async def check_gpu_quota():
                         # Add to available options if quota is available (both spot and on-demand)
                         if available > 0:
                             # Use correct machine type for each GPU type from static mapping
-                            from vertex_gpu_service import get_machine_type_for_gpu
+                            from vertex_gpu_service import \
+                                get_machine_type_for_gpu
 
                             machine_type = get_machine_type_for_gpu(
                                 region, f"NVIDIA_{gpu_type}"
@@ -631,10 +635,8 @@ def health_check_machine_types():
             )
 
         # Import the mapping functions
-        from vertex_gpu_service import (
-            REGION_GPU_MACHINE_MAP,
-            discover_gpu_machine_compatibility,
-        )
+        from vertex_gpu_service import (REGION_GPU_MACHINE_MAP,
+                                        discover_gpu_machine_compatibility)
 
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         regions = [

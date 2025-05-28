@@ -4,15 +4,15 @@ Google Cloud Monitoring Setup Script for AutoVideo
 This script creates monitoring policies, dashboards, and notification channels
 """
 
+import argparse
+import json
 import os
 import sys
+from typing import Any, Dict, List
+
 import yaml
-import json
-from typing import Dict, List, Any
-from google.cloud import monitoring_v3
-from google.cloud import logging_v2
 from google.api_core import exceptions
-import argparse
+from google.cloud import logging_v2, monitoring_v3
 
 
 class MonitoringSetup:

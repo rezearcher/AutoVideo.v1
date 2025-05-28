@@ -1,9 +1,11 @@
-import os
 import logging
+import os
+
 from dotenv import load_dotenv
+
+from youtube_uploader.config import YouTubeConfig
 from youtube_uploader.token_manager import TokenManager
 from youtube_uploader.uploader import YouTubeUploader
-from youtube_uploader.config import YouTubeConfig
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

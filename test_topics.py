@@ -2,6 +2,7 @@
 
 import os
 import sys
+
 from topic_manager import TopicManager
 
 # Set up environment

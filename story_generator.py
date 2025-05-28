@@ -1,11 +1,12 @@
-import os
 import logging
-from openai import OpenAI
-from dotenv import load_dotenv
-from datetime import datetime
-import time
+import os
 import random
+import time
+from datetime import datetime
+
 import httpx
+from dotenv import load_dotenv
+from openai import OpenAI
 
 # Load environment variables
 load_dotenv()

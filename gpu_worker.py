@@ -4,26 +4,23 @@ Standalone GPU Worker for Vertex AI Custom Jobs
 Processes video generation tasks with GPU acceleration
 """
 
-import os
-import sys
-import json
 import argparse
+import json
 import logging
-import subprocess
-import tempfile
+import os
 import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
-from typing import Dict, Any, List
-from google.cloud import storage
-from moviepy.editor import (
-    VideoFileClip,
-    ImageClip,
-    concatenate_videoclips,
-    AudioFileClip,
-    CompositeVideoClip,
-)
+from typing import Any, Dict, List
+
 import numpy as np
-from caption_generator import create_caption_images, add_captions_to_video
+from google.cloud import storage
+from moviepy.editor import (AudioFileClip, CompositeVideoClip, ImageClip,
+                            VideoFileClip, concatenate_videoclips)
+
+from caption_generator import add_captions_to_video, create_caption_images
 
 # Configure logging
 logging.basicConfig(

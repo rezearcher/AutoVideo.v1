@@ -3,14 +3,14 @@
 Debug script to test Vertex AI initialization step by step
 """
 
+import logging
 import os
 import sys
 import time
-import logging
-from google.cloud import aiplatform
-from google.cloud.aiplatform import gapic
-from google.cloud import storage
+
 import google.auth
+from google.cloud import aiplatform, storage
+from google.cloud.aiplatform import gapic
 
 # Configure logging
 logging.basicConfig(

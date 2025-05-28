@@ -1,10 +1,11 @@
-from openai import OpenAI
-import os
-import requests
-from datetime import datetime
-import time
 import logging
+import os
+import time
+from datetime import datetime
+
+import requests
 from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")

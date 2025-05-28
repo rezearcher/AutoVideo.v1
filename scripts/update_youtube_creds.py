@@ -2,10 +2,11 @@
 Script to update YouTube credentials in .env file from a JSON file in downloads.
 """
 
-import os
 import json
+import os
 import shutil
 from pathlib import Path
+
 from dotenv import load_dotenv, set_key
 
 

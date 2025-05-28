@@ -4,6 +4,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class TimingMetrics:
     def __init__(self):
         self.start_time: Optional[datetime] = None
@@ -36,7 +37,9 @@ class TimingMetrics:
         if self.current_phase and self.phase_start_time:
             duration = (datetime.now() - self.phase_start_time).total_seconds()
             self.phase_times[self.current_phase] = duration
-            logger.info(f"Phase {self.current_phase} completed in {duration:.2f} seconds")
+            logger.info(
+                f"Phase {self.current_phase} completed in {duration:.2f} seconds"
+            )
             self.current_phase = None
             self.phase_start_time = None
 
@@ -46,6 +49,9 @@ class TimingMetrics:
             "total_duration": self.total_duration,
             "phase_times": self.phase_times,
             "current_phase": self.current_phase,
-            "current_phase_duration": (datetime.now() - self.phase_start_time).total_seconds() 
-                if self.current_phase and self.phase_start_time else None
-        } 
+            "current_phase_duration": (
+                (datetime.now() - self.phase_start_time).total_seconds()
+                if self.current_phase and self.phase_start_time
+                else None
+            ),
+        }

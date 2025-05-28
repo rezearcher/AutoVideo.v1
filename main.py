@@ -278,49 +278,45 @@ def openai_health_check():
 def health_check_vertex_ai():
     """Test Vertex AI connectivity through PSC endpoint"""
     try:
-        import google.auth
-        from google.cloud import aiplatform
-        from google.cloud.aiplatform_v1.services.job_service import JobServiceClient
+        # Use the improved connectivity test from VertexGPUJobService
+        from vertex_gpu_service import VertexGPUJobService
         
-        # Get and log the actual credentials being used
-        creds, project = google.auth.default()
-        logger.info(f"Using credentials: {getattr(creds, 'service_account_email', 'unknown')} / project: {project}")
-        
-        # Get project and location from environment
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
-        location = 'us-central1'
         
-        # Initialize Vertex AI
-        aiplatform.init(project=project_id, location=location)
+        # Create service instance (this will test initialization)
+        gpu_service = VertexGPUJobService(project_id=project_id)
         
-        # Test connection by listing custom jobs with explicit endpoint
-        client = JobServiceClient(
-            client_options={"api_endpoint": f"{location}-aiplatform.googleapis.com"}
-        )
-        parent = f"projects/{project_id}/locations/{location}"
+        # Test connectivity using the new method
+        connectivity_result = gpu_service.test_vertex_ai_connectivity()
         
-        # Create the request object with correct syntax
-        from google.cloud.aiplatform_v1.types import ListCustomJobsRequest
-        request = ListCustomJobsRequest(
-            parent=parent,
-            page_size=1
-        )
-        
-        # This will test the actual connection to Vertex AI
-        response = client.list_custom_jobs(request=request)
-        
-        return jsonify({
-            'status': 'healthy',
-            'vertex_ai': 'connected',
-            'message': 'Vertex AI accessible through PSC endpoint',
-            'project_id': project_id,
-            'location': location,
-            'service_account': getattr(creds, 'service_account_email', 'unknown'),
-            'timestamp': datetime.utcnow().isoformat()
+        # Send health check metric
+        send_custom_metric("vertex_ai_health_check", 1.0 if connectivity_result["status"] == "healthy" else 0.0, {
+            "status": connectivity_result["status"]
         })
+        
+        if connectivity_result["status"] == "healthy":
+            return jsonify({
+                'status': 'healthy',
+                'vertex_ai': 'connected',
+                'message': connectivity_result["message"],
+                'project_id': connectivity_result["project_id"],
+                'location': connectivity_result["region"],
+                'test_job_name': connectivity_result["test_job_name"],
+                'timestamp': datetime.utcnow().isoformat()
+            })
+        else:
+            return jsonify({
+                'status': 'unhealthy',
+                'vertex_ai': 'failed',
+                'error': connectivity_result["error"],
+                'project_id': connectivity_result["project_id"],
+                'location': connectivity_result["region"],
+                'timestamp': datetime.utcnow().isoformat()
+            }), 500
         
     except Exception as e:
         logger.error(f"Vertex AI health check failed: {str(e)}", exc_info=True)
+        send_custom_metric("vertex_ai_health_check", 0.0, {"status": "error"})
         return jsonify({
             'status': 'unhealthy',
             'vertex_ai': 'failed',

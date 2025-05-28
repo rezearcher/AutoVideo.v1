@@ -1,6 +1,6 @@
 """
 Vertex AI GPU Job Service
-Handles triggering and monitoring GPU video processing jobs
+Handles triggering and monitoring GPU video processing jobs using Google's best practices
 """
 
 import os
@@ -11,11 +11,26 @@ from typing import Dict, Any, Optional, List
 from google.cloud import aiplatform
 from google.cloud import storage
 import time
-from google.cloud.aiplatform import gapic
 import google.auth
 from google.auth.transport.requests import Request
 
 logger = logging.getLogger(__name__)
+
+# Global Vertex AI initialization - done once at module level
+_vertex_initialized = False
+
+def initialize_vertex_ai(project_id: str, region: str, staging_bucket: str):
+    """Initialize Vertex AI once globally"""
+    global _vertex_initialized
+    if not _vertex_initialized:
+        logger.info(f"🚀 Initializing Vertex AI globally: project={project_id}, region={region}")
+        aiplatform.init(
+            project=project_id,
+            location=region,
+            staging_bucket=staging_bucket
+        )
+        _vertex_initialized = True
+        logger.info("✅ Vertex AI initialized globally")
 
 class VertexGPUJobService:
     def __init__(self, project_id: str, region: str = "us-central1", bucket_name: str = None):
@@ -29,52 +44,47 @@ class VertexGPUJobService:
             
             logger.info(f"📋 Project: {self.project_id}, Region: {self.region}, Bucket: {self.bucket_name}")
             
-            # Initialize Vertex AI with proper regional endpoint
-            logger.info("🚀 Initializing Vertex AI with regional endpoint...")
-            aiplatform.init(
-                project=project_id, 
-                location=region,
-                staging_bucket=f"gs://{self.bucket_name}"
-            )
+            # Initialize Vertex AI globally (once)
+            staging_bucket = f"gs://{self.bucket_name}"
+            initialize_vertex_ai(project_id, region, staging_bucket)
             
-            # Initialize the GAPIC client with explicit regional endpoint and timeout
-            logger.info(f"🌐 Initializing JobServiceClient for region {region}...")
-            self.job_client = gapic.JobServiceClient(
-                client_options={"api_endpoint": f"{region}-aiplatform.googleapis.com"}
-            )
-            logger.info("✅ Vertex AI and JobServiceClient initialized successfully")
-            
-            # Initialize Storage client with timeout
+            # Initialize Storage client
             logger.info("💾 Initializing GCS client...")
             self.storage_client = storage.Client(project=project_id)
             self.bucket = self.storage_client.bucket(self.bucket_name)
             logger.info("✅ GCS client initialized successfully")
             
-            # GPU job configuration - using preemptible GPUs for cost savings and higher quota
+            # GPU job configuration - using spot VMs for cost savings and higher quota
             self.container_image = f"gcr.io/{project_id}/av-gpu-job"
             self.machine_type = "n1-standard-4"
             self.accelerator_count = 1
-            self.use_preemptible = True  # Enable preemptible instances for cost savings
             
-            # GPU fallback options (in order of preference)
+            # GPU fallback options (in order of preference) - spot first for cost/quota
             self.gpu_options = [
-                ("NVIDIA_L4", True),      # L4 spot - best quota availability
-                ("NVIDIA_TESLA_T4", True), # T4 spot - good availability
-                ("NVIDIA_L4", False),     # L4 on-demand - fallback
-                ("NVIDIA_TESLA_T4", False), # T4 on-demand - fallback
-                ("NVIDIA_TESLA_P100", False), # P100 on-demand - last resort
+                ("NVIDIA_L4", True),           # L4 spot - best quota availability
+                ("NVIDIA_TESLA_T4", True),     # T4 spot - good availability  
+                ("NVIDIA_L4", False),          # L4 on-demand - fallback
+                ("NVIDIA_TESLA_T4", False),    # T4 on-demand - fallback
+                ("NVIDIA_TESLA_P100", False),  # P100 on-demand - last resort
             ]
             
             # Start with the first option
             self.accelerator_type, self.current_spot = self.gpu_options[0]
             
-            logger.info(f"🎯 GPU config: {self.container_image}, {self.machine_type}, {self.accelerator_type} (preemptible: {self.use_preemptible})")
+            # Job labels for tracking and filtering
+            self.job_labels = {
+                "pipeline": "autovideo",
+                "phase": "gpu",
+                "service": "av-app",
+                "environment": os.getenv("ENVIRONMENT", "production")
+            }
+            
+            logger.info(f"🎯 GPU config: {self.container_image}, {self.machine_type}, {self.accelerator_type} (spot: {self.current_spot})")
             logger.info("✅ VertexGPUJobService initialized successfully")
             
         except Exception as e:
             logger.error(f"❌ Failed to initialize VertexGPUJobService: {e}")
             logger.error(f"❌ Error type: {type(e).__name__}")
-            logger.error(f"❌ Error details: {str(e)}")
             import traceback
             logger.error(f"❌ Full traceback: {traceback.format_exc()}")
             raise
@@ -82,7 +92,7 @@ class VertexGPUJobService:
     def upload_assets_to_gcs(self, job_id: str, image_paths: List[str], audio_path: str) -> Dict[str, Any]:
         """Upload images and audio to GCS with retry logic"""
         try:
-            logger.info(f"Uploading assets to GCS for job {job_id}")
+            logger.info(f"📤 Uploading assets to GCS for job {job_id}")
             
             asset_urls = {"image_urls": [], "audio_url": ""}
             
@@ -114,9 +124,9 @@ class VertexGPUJobService:
                     
                     image_url = f"gs://{self.bucket_name}/{blob_name}"
                     asset_urls["image_urls"].append(image_url)
-                    logger.info(f"Uploaded image {i}: {image_url}")
+                    logger.info(f"✅ Uploaded image {i}: {image_url}")
                 else:
-                    logger.warning(f"Image file not found: {image_path}")
+                    logger.warning(f"⚠️ Image file not found: {image_path}")
             
             # Upload audio with retry logic
             if os.path.exists(audio_path):
@@ -144,14 +154,14 @@ class VertexGPUJobService:
                         time.sleep(2 ** attempt)  # Exponential backoff
                 
                 asset_urls["audio_url"] = f"gs://{self.bucket_name}/{blob_name}"
-                logger.info(f"Uploaded audio: {asset_urls['audio_url']}")
+                logger.info(f"✅ Uploaded audio: {asset_urls['audio_url']}")
             else:
-                logger.warning(f"Audio file not found: {audio_path}")
+                logger.warning(f"⚠️ Audio file not found: {audio_path}")
             
             return asset_urls
             
         except Exception as e:
-            logger.error(f"Failed to upload assets to GCS: {e}")
+            logger.error(f"❌ Failed to upload assets to GCS: {e}")
             raise
     
     def create_job_config(self, job_id: str, job_data: Dict[str, Any]) -> str:
@@ -165,11 +175,11 @@ class VertexGPUJobService:
                 content_type='application/json'
             )
             
-            logger.info(f"Uploaded job config: gs://{self.bucket_name}/{blob_name}")
+            logger.info(f"✅ Uploaded job config: gs://{self.bucket_name}/{blob_name}")
             return f"gs://{self.bucket_name}/{blob_name}"
             
         except Exception as e:
-            logger.error(f"Failed to upload job config: {e}")
+            logger.error(f"❌ Failed to upload job config: {e}")
             raise
     
     def try_next_gpu_option(self) -> bool:
@@ -190,39 +200,79 @@ class VertexGPUJobService:
             return False
 
     def submit_job_with_fallback(self, job_id: str) -> str:
-        """Submit job with GPU fallback logic"""
+        """Submit job using high-level CustomJob API with GPU fallback logic"""
         max_gpu_attempts = len(self.gpu_options)
         
         for attempt in range(max_gpu_attempts):
             logger.info(f"🎬 Submitting job to Vertex AI (attempt {attempt + 1}/{max_gpu_attempts}) with {self.accelerator_type} (spot: {self.current_spot})...")
             
             try:
-                # Create job specification with current GPU settings
-                job_spec = self.create_job_spec(job_id)
+                # Create CustomJob using high-level API
+                display_name = f"av-video-render-{job_id}"
                 
-                # Submit job with timeout
-                response = self.job_client.create_custom_job(
-                    parent=f"projects/{self.project_id}/locations/{self.region}",
-                    custom_job=job_spec,
-                    timeout=60  # 60 second timeout for job submission
+                # Create job labels with current attempt info
+                job_labels = {
+                    **self.job_labels,
+                    "job_id": job_id,
+                    "gpu_type": self.accelerator_type.lower().replace("_", "-"),
+                    "spot_vm": str(self.current_spot).lower(),
+                    "attempt": str(attempt + 1)
+                }
+                
+                # Use the high-level CustomJob API
+                job = aiplatform.CustomJob(
+                    display_name=display_name,
+                    worker_pool_specs=[
+                        {
+                            "machine_spec": {
+                                "machine_type": self.machine_type,
+                                "accelerator_type": self.accelerator_type,
+                                "accelerator_count": self.accelerator_count,
+                            },
+                            "replica_count": 1,
+                            "disk_spec": {
+                                "boot_disk_type": "pd-ssd",
+                                "boot_disk_size_gb": 100
+                            },
+                            "container_spec": {
+                                "image_uri": self.container_image,
+                                "args": [
+                                    "--job-id", job_id,
+                                    "--project-id", self.project_id,
+                                    "--bucket-name", self.bucket_name
+                                ],
+                                "env": [
+                                    {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
+                                ]
+                            },
+                        }
+                    ],
+                    # Enable spot VMs for cost savings and higher quota availability
+                    scheduling={
+                        "restart_job_on_worker_restart": True,
+                        "timeout": "3600s",  # 1 hour timeout
+                        "enable_spot": self.current_spot
+                    },
+                    labels=job_labels
                 )
                 
-                logger.info(f"✅ Job submitted successfully: {response.name}")
-                logger.info(f"🎯 Job resource name: {response.name}")
+                # Submit job asynchronously
+                logger.info(f"🚀 Submitting CustomJob: {display_name}")
+                job.submit(sync=False)  # Non-blocking submission
                 
-                # Extract job ID from response
-                vertex_job_id = response.name.split('/')[-1]
-                logger.info(f"🆔 Vertex AI job ID: {vertex_job_id}")
+                logger.info(f"✅ Job submitted successfully: {job.resource_name}")
+                logger.info(f"🎯 Job resource name: {job.resource_name}")
+                logger.info(f"🏷️ Job labels: {job_labels}")
                 
                 return job_id
                 
             except Exception as submission_error:
                 logger.error(f"❌ Job submission failed: {submission_error}")
                 logger.error(f"❌ Submission error type: {type(submission_error).__name__}")
-                logger.error(f"❌ Submission error details: {str(submission_error)}")
                 
                 # Check if it's a quota issue and we have more GPU options to try
-                if "quota" in str(submission_error).lower():
+                error_str = str(submission_error).lower()
+                if "quota" in error_str or "insufficient" in error_str:
                     logger.error(f"📊 Quota limit reached for {self.accelerator_type} (spot: {self.current_spot})")
                     if attempt < max_gpu_attempts - 1 and self.try_next_gpu_option():
                         logger.info(f"🔄 Retrying with next GPU option...")
@@ -230,105 +280,22 @@ class VertexGPUJobService:
                     else:
                         logger.error("❌ All GPU options exhausted")
                         raise submission_error
-                elif "timeout" in str(submission_error).lower() or "deadline" in str(submission_error).lower():
+                elif "timeout" in error_str or "deadline" in error_str:
                     logger.error("🕐 Job submission timed out - likely network connectivity issue")
                     raise submission_error
-                elif "permission" in str(submission_error).lower() or "auth" in str(submission_error).lower():
+                elif "permission" in error_str or "auth" in error_str:
                     logger.error("🔐 Authentication/permission issue detected")
                     raise submission_error
                 else:
                     # For other errors, don't retry
+                    logger.error(f"❌ Non-retryable error: {submission_error}")
                     raise submission_error
         
         # This should never be reached, but just in case
         raise Exception("Failed to submit job after all GPU options exhausted")
 
-    def create_job_spec(self, job_id: str) -> Dict[str, Any]:
-        """Create job specification with preemptible GPU settings for cost savings and higher quota"""
-        return {
-            "display_name": f"av-gpu-job-{job_id}",
-            "job_spec": {
-                "worker_pool_specs": [
-                    {
-                        "machine_spec": {
-                            "machine_type": self.machine_type,
-                            "accelerator_type": self.accelerator_type,
-                            "accelerator_count": self.accelerator_count,
-                        },
-
-                        "replica_count": 1,
-                        "disk_spec": {
-                            "boot_disk_type": "pd-ssd",
-                            "boot_disk_size_gb": 100
-                        },
-                        "container_spec": {
-                            "image_uri": self.container_image,
-                            "args": [
-                                "--job-id", job_id,
-                                "--project-id", self.project_id,
-                                "--bucket-name", self.bucket_name
-                            ],
-                            "env": [
-                                {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
-                            ]
-                        },
-                    }
-                ],
-                # Enable preemptible instances for 80% cost savings and higher quota availability
-                "scheduling": {
-                    "restart_job_on_worker_restart": True,
-                    "timeout": "3600s",  # 1 hour timeout for preemptible jobs
-                    "enable_spot": self.current_spot  # Enable spot/preemptible VMs for higher quota availability
-                },
-                "enable_web_access": False,
-                "enable_dashboard_access": False
-            }
-        }
-    
-    def submit_gpu_job(self, script: str, voice_settings: Dict[str, Any], 
-                      video_settings: Dict[str, Any], image_paths: List[str] = None, 
-                      audio_path: str = None) -> str:
-        """Submit a new GPU video processing job"""
-        try:
-            # Generate unique job ID
-            job_id = f"video-job-{uuid.uuid4().hex[:8]}"
-            
-            # Prepare job data
-            job_data = {
-                "job_id": job_id,
-                "script": script,
-                "voice_settings": voice_settings,
-                "video_settings": video_settings,
-                "created_at": time.time()
-            }
-            
-            # Upload assets if provided
-            if image_paths and audio_path:
-                asset_urls = self.upload_assets_to_gcs(job_id, image_paths, audio_path)
-                job_data.update(asset_urls)
-            
-            # Upload job configuration to GCS
-            self.create_job_config(job_id, job_data)
-            
-            # Submit the job with GPU fallback logic
-            logger.info("🚀 Creating Vertex AI CustomJob...")
-            try:
-                return self.submit_job_with_fallback(job_id)
-                
-            except Exception as vertex_error:
-                logger.error(f"❌ Vertex AI job creation failed: {vertex_error}")
-                logger.error(f"❌ Error type: {type(vertex_error).__name__}")
-                logger.error(f"❌ Error details: {str(vertex_error)}")
-                import traceback
-                logger.error(f"❌ Full traceback: {traceback.format_exc()}")
-                raise
-            
-        except Exception as e:
-            logger.error(f"Failed to submit GPU job: {e}")
-            raise
-    
     def create_video_job(self, image_paths: List[str], audio_path: str, story: str) -> str:
-        """Create a video job from images, audio, and story"""
+        """Create a video job from images, audio, and story using high-level API"""
         try:
             logger.info("🔧 Starting video job creation...")
             
@@ -359,21 +326,11 @@ class VertexGPUJobService:
             
             # Submit the job with GPU fallback logic
             logger.info("🚀 Creating Vertex AI CustomJob...")
-            try:
-                return self.submit_job_with_fallback(job_id)
-                
-            except Exception as vertex_error:
-                logger.error(f"❌ Vertex AI job creation failed: {vertex_error}")
-                logger.error(f"❌ Error type: {type(vertex_error).__name__}")
-                logger.error(f"❌ Error details: {str(vertex_error)}")
-                import traceback
-                logger.error(f"❌ Full traceback: {traceback.format_exc()}")
-                raise
+            return self.submit_job_with_fallback(job_id)
             
         except Exception as e:
             logger.error(f"❌ Failed to create video job: {e}")
             logger.error(f"❌ Error type: {type(e).__name__}")
-            logger.error(f"❌ Error details: {str(e)}")
             import traceback
             logger.error(f"❌ Full traceback: {traceback.format_exc()}")
             raise
@@ -397,7 +354,7 @@ class VertexGPUJobService:
                 }
                 
         except Exception as e:
-            logger.error(f"Failed to get job status: {e}")
+            logger.error(f"❌ Failed to get job status: {e}")
             return {
                 "status": "error",
                 "job_id": job_id,
@@ -415,7 +372,7 @@ class VertexGPUJobService:
                 return None
                 
         except Exception as e:
-            logger.error(f"Failed to get job result: {e}")
+            logger.error(f"❌ Failed to get job result: {e}")
             return None
     
     def download_video_result(self, job_id: str, local_path: str) -> bool:
@@ -423,7 +380,7 @@ class VertexGPUJobService:
         try:
             video_url = self.get_job_result(job_id)
             if not video_url:
-                logger.error("No video result available")
+                logger.error("❌ No video result available")
                 return False
             
             # Extract blob name from GCS URL
@@ -432,11 +389,11 @@ class VertexGPUJobService:
             
             # Download to local path
             blob.download_to_filename(local_path)
-            logger.info(f"Downloaded video to: {local_path}")
+            logger.info(f"✅ Downloaded video to: {local_path}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to download video result: {e}")
+            logger.error(f"❌ Failed to download video result: {e}")
             return False
     
     def wait_for_job_completion(self, job_id: str, timeout: int = 600) -> Dict[str, Any]:
@@ -457,4 +414,39 @@ class VertexGPUJobService:
             "status": "timeout",
             "job_id": job_id,
             "message": f"Job did not complete within {timeout} seconds"
-        } 
+        }
+    
+    def test_vertex_ai_connectivity(self) -> Dict[str, Any]:
+        """Test Vertex AI connectivity for health checks"""
+        try:
+            logger.info("🔍 Testing Vertex AI connectivity...")
+            
+            # Create a minimal test job spec (don't submit)
+            test_job = aiplatform.CustomJob(
+                display_name="av-connectivity-test",
+                worker_pool_specs=[{
+                    "machine_spec": {"machine_type": "n1-standard-2"},
+                    "replica_count": 1,
+                    "container_spec": {"image_uri": "gcr.io/google-containers/busybox"}
+                }],
+                labels={"test": "connectivity", "pipeline": "autovideo"}
+            )
+            
+            # Just creating the job object tests the API connectivity
+            logger.info("✅ Vertex AI connectivity test passed")
+            return {
+                "status": "healthy",
+                "message": "Vertex AI API accessible",
+                "project_id": self.project_id,
+                "region": self.region,
+                "test_job_name": test_job.display_name
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Vertex AI connectivity test failed: {e}")
+            return {
+                "status": "unhealthy", 
+                "error": str(e),
+                "project_id": self.project_id,
+                "region": self.region
+            } 

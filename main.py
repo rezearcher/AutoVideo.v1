@@ -53,9 +53,10 @@ app = Flask(__name__)
 is_generating = False
 is_initialized = False
 last_generation_time = None
-last_generation_status = None
+last_generation_status = "ready"
 timing_metrics = TimingMetrics()
 topic_manager = None
+vertex_gpu_service = None  # Global GPU service instance
 
 # Initialize monitoring client
 monitoring_client = None
@@ -73,6 +74,9 @@ if CLOUD_MONITORING_AVAILABLE:
 request_counts = defaultdict(list)
 RATE_LIMIT_WINDOW = 300  # 5 minutes
 RATE_LIMIT_MAX_REQUESTS = 10  # Max requests per window
+
+# Application initialization flag
+app_initialized = False
 
 def send_custom_metric(metric_name: str, value: float, labels: dict = None):
     """Send a custom metric to Google Cloud Monitoring."""
@@ -180,6 +184,8 @@ def before_request():
 
 def initialize_app():
     """Initialize the application and check required environment variables."""
+    global vertex_gpu_service, app_initialized
+    
     logger.info("Starting application initialization...")
     
     try:
@@ -223,6 +229,18 @@ def initialize_app():
         else:
             logger.info(f"PEXELS_API_KEY loaded (length={len(pexels_key)})")
         
+        # Initialize global Vertex AI GPU service
+        logger.info("Initializing global VertexGPUJobService...")
+        try:
+            from vertex_gpu_service import VertexGPUJobService
+            vertex_gpu_service = VertexGPUJobService(project_id=project_id)
+            logger.info("✅ Global VertexGPUJobService initialized successfully")
+        except Exception as gpu_error:
+            logger.warning(f"⚠️ Failed to initialize VertexGPUJobService: {gpu_error}")
+            logger.warning("Video generation will be unavailable, but app will continue")
+            vertex_gpu_service = None
+        
+        app_initialized = True
         logger.info(f"Application initialized successfully with project: {project_id}")
         return True
     except Exception as e:
@@ -276,18 +294,20 @@ def openai_health_check():
 
 @app.route('/health/vertex-ai')
 def health_check_vertex_ai():
-    """Test Vertex AI connectivity through PSC endpoint"""
+    """Test Vertex AI connectivity through global GPU service"""
+    global vertex_gpu_service
+    
     try:
-        # Use the improved connectivity test from VertexGPUJobService
-        from vertex_gpu_service import VertexGPUJobService
+        if vertex_gpu_service is None:
+            return jsonify({
+                'status': 'unhealthy',
+                'vertex_ai': 'unavailable',
+                'error': 'VertexGPUJobService not initialized',
+                'timestamp': datetime.utcnow().isoformat()
+            }), 500
         
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
-        
-        # Create service instance (this will test initialization)
-        gpu_service = VertexGPUJobService(project_id=project_id)
-        
-        # Test connectivity using the new method
-        connectivity_result = gpu_service.test_vertex_ai_connectivity()
+        # Test connectivity using the global service
+        connectivity_result = vertex_gpu_service.test_vertex_ai_connectivity()
         
         # Send health check metric
         send_custom_metric("vertex_ai_health_check", 1.0 if connectivity_result["status"] == "healthy" else 0.0, {
@@ -529,89 +549,38 @@ def generate_video_batch():
         send_custom_metric("phase_duration", phase_duration, {"phase": "voiceover_generation"})
         logger.info(f"✅ Voiceover generated in {phase_duration:.2f}s")
         
-        # Create video using GPU worker (primary) or local processing (fallback)
+        # Create video using Vertex AI GPU (cloud-native - no local fallback)
         logger.info("🎬 Creating video...")
         timing_metrics.start_phase("video_creation")
         phase_start = time.time()
         output_path = f"{output_dir}/final_video.mp4"
         
-        # Try GPU worker first with initialization timeout
+        # Use global Vertex AI GPU service (already initialized at startup)
         try:
-            logger.info("🚀 Attempting video creation with Vertex AI GPU...")
+            global vertex_gpu_service
+            
+            if vertex_gpu_service is None:
+                raise Exception("VertexGPUJobService not initialized at startup")
+            
+            logger.info("🚀 Using global VertexGPUJobService for video creation...")
             
             # Debug: Log the paths being passed
             logger.info(f"📁 Image paths: {image_paths}")
             logger.info(f"🎵 Audio path: {audio_path}")
             logger.info(f"📝 Story length: {len(story)} characters")
             
-            # Import and initialize with thread-safe timeout protection
-            import threading
-            import queue
-            
-            def _initialize_vertex_service():
-                """Initialize Vertex AI service in a separate thread"""
-                try:
-                    logger.info("🔧 Starting VertexGPUJobService initialization with 180s timeout...")
-                    from vertex_gpu_service import VertexGPUJobService
-                    logger.info("✅ Import successful, creating service instance...")
-                    
-                    project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
-                    gpu_service = VertexGPUJobService(project_id=project_id)
-                    logger.info("✅ VertexGPUJobService initialized successfully")
-                    return gpu_service
-                    
-                except Exception as init_error:
-                    logger.error(f"❌ Failed to import or initialize VertexGPUJobService: {init_error}")
-                    logger.error(f"❌ Error type: {type(init_error).__name__}")
-                    import traceback
-                    logger.error(f"❌ Full traceback: {traceback.format_exc()}")
-                    raise init_error
-            
-            # Use thread-safe timeout
-            result_queue = queue.Queue()
-            exception_queue = queue.Queue()
-            
-            def _worker():
-                try:
-                    service = _initialize_vertex_service()
-                    result_queue.put(service)
-                except Exception as e:
-                    exception_queue.put(e)
-            
-            # Start initialization in thread with timeout
-            init_thread = threading.Thread(target=_worker)
-            init_thread.daemon = True
-            init_thread.start()
-            init_thread.join(timeout=180)  # 180 second timeout
-            
-            if init_thread.is_alive():
-                logger.error("🕐 GPU service initialization timed out after 180 seconds")
-                logger.error("🔄 Falling back to local processing due to initialization timeout")
-                raise Exception("Vertex AI initialization timeout: exceeded 180 seconds")
-            
-            # Check for exceptions
-            if not exception_queue.empty():
-                init_error = exception_queue.get()
-                raise Exception(f"Vertex AI initialization failed: {init_error}")
-            
-            # Get the result
-            if result_queue.empty():
-                raise Exception("Vertex AI initialization failed: no result returned")
-            
-            gpu_service = result_queue.get()
-            
             # Submit job to Vertex AI
             logger.info("📤 Submitting job to Vertex AI...")
-            job_id = gpu_service.create_video_job(image_paths, audio_path, story)
+            job_id = vertex_gpu_service.create_video_job(image_paths, audio_path, story)
             logger.info(f"✅ Submitted Vertex AI job: {job_id}")
             
             # Wait for completion
             logger.info("⏳ Waiting for job completion...")
-            result = gpu_service.wait_for_job_completion(job_id, timeout=600)
+            result = vertex_gpu_service.wait_for_job_completion(job_id, timeout=600)
             
             if result.get("status") == "completed":
                 # Download the result
-                if gpu_service.download_video_result(job_id, output_path):
+                if vertex_gpu_service.download_video_result(job_id, output_path):
                     video_path = output_path
                     logger.info("✅ Video created successfully using Vertex AI GPU")
                     send_custom_metric("video_creation_method", 1.0, {"method": "vertex_gpu"})
@@ -621,18 +590,10 @@ def generate_video_batch():
                 raise Exception(f"Vertex AI job failed: {result}")
         
         except Exception as gpu_error:
-            logger.warning(f"⚠️ Vertex AI GPU failed: {gpu_error}")
-            
-            # Fallback to local processing if available
-            if LOCAL_VIDEO_PROCESSING_AVAILABLE and create_video:
-                logger.info("🔄 Falling back to local video processing...")
-                video_path = create_video(image_paths, audio_path, story, timestamp, output_path)
-                logger.info("✅ Video created successfully using local processing")
-                send_custom_metric("video_creation_method", 1.0, {"method": "local_fallback"})
-            else:
-                logger.error("❌ Both Vertex AI GPU and local processing failed/unavailable")
-                send_custom_metric("video_creation_method", 1.0, {"method": "failed"})
-                raise Exception(f"Video creation failed: Vertex AI error: {gpu_error}, Local processing unavailable: {not LOCAL_VIDEO_PROCESSING_AVAILABLE}")
+            logger.error(f"❌ Vertex AI GPU processing failed: {gpu_error}")
+            send_custom_metric("video_creation_method", 1.0, {"method": "failed"})
+            # Cloud-native design: no local fallback, fail fast with clear error
+            raise Exception(f"Video creation failed - Vertex AI error: {gpu_error}. This is a cloud-native app with no local processing fallback.")
         
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()
@@ -735,88 +696,38 @@ def generate_video_thread():
         timing_metrics.end_phase()
         send_custom_metric("phase_duration", phase_duration, {"phase": "voiceover_generation"})
         
-        # Create video using GPU worker (primary) or local processing (fallback)
+        # Create video using Vertex AI GPU (cloud-native - no local fallback)
+        logger.info("🎬 Creating video...")
         timing_metrics.start_phase("video_creation")
         phase_start = time.time()
         output_path = f"{output_dir}/final_video.mp4"
         
-        # Try GPU worker first with initialization timeout
+        # Use global Vertex AI GPU service (already initialized at startup)
         try:
-            logger.info("🚀 Attempting video creation with Vertex AI GPU...")
+            global vertex_gpu_service
+            
+            if vertex_gpu_service is None:
+                raise Exception("VertexGPUJobService not initialized at startup")
+            
+            logger.info("🚀 Using global VertexGPUJobService for video creation...")
             
             # Debug: Log the paths being passed
             logger.info(f"📁 Image paths: {image_paths}")
             logger.info(f"🎵 Audio path: {audio_path}")
             logger.info(f"📝 Story length: {len(story)} characters")
             
-            # Import and initialize with thread-safe timeout protection
-            import threading
-            import queue
-            
-            def _initialize_vertex_service():
-                """Initialize Vertex AI service in a separate thread"""
-                try:
-                    logger.info("🔧 Starting VertexGPUJobService initialization with 180s timeout...")
-                    from vertex_gpu_service import VertexGPUJobService
-                    logger.info("✅ Import successful, creating service instance...")
-                    
-                    project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
-                    gpu_service = VertexGPUJobService(project_id=project_id)
-                    logger.info("✅ VertexGPUJobService initialized successfully")
-                    return gpu_service
-                    
-                except Exception as init_error:
-                    logger.error(f"❌ Failed to import or initialize VertexGPUJobService: {init_error}")
-                    logger.error(f"❌ Error type: {type(init_error).__name__}")
-                    import traceback
-                    logger.error(f"❌ Full traceback: {traceback.format_exc()}")
-                    raise init_error
-            
-            # Use thread-safe timeout
-            result_queue = queue.Queue()
-            exception_queue = queue.Queue()
-            
-            def _worker():
-                try:
-                    service = _initialize_vertex_service()
-                    result_queue.put(service)
-                except Exception as e:
-                    exception_queue.put(e)
-            
-            # Start initialization in thread with timeout
-            init_thread = threading.Thread(target=_worker)
-            init_thread.daemon = True
-            init_thread.start()
-            init_thread.join(timeout=180)  # 180 second timeout
-            
-            if init_thread.is_alive():
-                logger.error("🕐 GPU service initialization timed out after 180 seconds")
-                logger.error("🔄 Falling back to local processing due to initialization timeout")
-                raise Exception("Vertex AI initialization timeout: exceeded 180 seconds")
-            
-            # Check for exceptions
-            if not exception_queue.empty():
-                init_error = exception_queue.get()
-                raise Exception(f"Vertex AI initialization failed: {init_error}")
-            
-            # Get the result
-            if result_queue.empty():
-                raise Exception("Vertex AI initialization failed: no result returned")
-            
-            gpu_service = result_queue.get()
-            
             # Submit job to Vertex AI
             logger.info("📤 Submitting job to Vertex AI...")
-            job_id = gpu_service.create_video_job(image_paths, audio_path, story)
+            job_id = vertex_gpu_service.create_video_job(image_paths, audio_path, story)
             logger.info(f"✅ Submitted Vertex AI job: {job_id}")
             
             # Wait for completion
             logger.info("⏳ Waiting for job completion...")
-            result = gpu_service.wait_for_job_completion(job_id, timeout=600)
+            result = vertex_gpu_service.wait_for_job_completion(job_id, timeout=600)
             
             if result.get("status") == "completed":
                 # Download the result
-                if gpu_service.download_video_result(job_id, output_path):
+                if vertex_gpu_service.download_video_result(job_id, output_path):
                     video_path = output_path
                     logger.info("✅ Video created successfully using Vertex AI GPU")
                     send_custom_metric("video_creation_method", 1.0, {"method": "vertex_gpu"})
@@ -826,18 +737,10 @@ def generate_video_thread():
                 raise Exception(f"Vertex AI job failed: {result}")
         
         except Exception as gpu_error:
-            logger.warning(f"⚠️ Vertex AI GPU failed: {gpu_error}")
-            
-            # Fallback to local processing if available
-            if LOCAL_VIDEO_PROCESSING_AVAILABLE and create_video:
-                logger.info("🔄 Falling back to local video processing...")
-                video_path = create_video(image_paths, audio_path, story, timestamp, output_path)
-                logger.info("✅ Video created successfully using local processing")
-                send_custom_metric("video_creation_method", 1.0, {"method": "local_fallback"})
-            else:
-                logger.error("❌ Both Vertex AI GPU and local processing failed/unavailable")
-                send_custom_metric("video_creation_method", 1.0, {"method": "failed"})
-                raise Exception(f"Video creation failed: Vertex AI error: {gpu_error}, Local processing unavailable: {not LOCAL_VIDEO_PROCESSING_AVAILABLE}")
+            logger.error(f"❌ Vertex AI GPU processing failed: {gpu_error}")
+            send_custom_metric("video_creation_method", 1.0, {"method": "failed"})
+            # Cloud-native design: no local fallback, fail fast with clear error
+            raise Exception(f"Video creation failed - Vertex AI error: {gpu_error}. This is a cloud-native app with no local processing fallback.")
         
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()

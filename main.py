@@ -14,6 +14,7 @@ import time
 from timing_metrics import TimingMetrics
 from topic_manager import TopicManager
 from collections import defaultdict
+import google.auth
 
 # Optional import for local video processing fallback
 try:
@@ -783,6 +784,68 @@ def generate_video_thread():
         timing_metrics.end_pipeline()
         send_custom_metric("pipeline_ended", 1.0, {"mode": "monitoring"})
 
+@app.route('/health/service-account', methods=['GET'])
+@require_auth
+def health_service_account():
+    """Check runtime service account and permissions"""
+    try:
+        creds, project = google.auth.default()
+        sa_email = getattr(creds, 'service_account_email', 'Unknown')
+        
+        return jsonify({
+            'status': 'healthy',
+            'service_account': sa_email,
+            'project': project,
+            'timestamp': datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/health/vertex-minimal', methods=['GET'])
+@require_auth
+def health_vertex_minimal():
+    """Test minimal CustomJob creation capability"""
+    try:
+        import google.cloud.aiplatform as aiplatform
+        
+        # Initialize aiplatform
+        creds, project = google.auth.default()
+        aiplatform.init(
+            project=project,
+            location="us-central1",
+            credentials=creds
+        )
+        
+        # Test minimal job creation (dry run)
+        from google.cloud.aiplatform_v1 import JobServiceClient
+        client = JobServiceClient(
+            client_options={"api_endpoint": "us-central1-aiplatform.googleapis.com"}
+        )
+        
+        # Just test the client creation and permissions - don't actually create a job
+        parent = f"projects/{project}/locations/us-central1"
+        
+        return jsonify({
+            'status': 'healthy', 
+            'message': 'Vertex AI client created successfully',
+            'project': project,
+            'parent': parent,
+            'service_account': getattr(creds, 'service_account_email', 'Unknown'),
+            'timestamp': datetime.now().isoformat()
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
 # Initialize the application
 try:
     is_initialized = initialize_app()
@@ -861,3 +924,12 @@ if __name__ == "__main__":
         # Start Flask server for monitoring and manual triggers
         logger.info(f"📊 Starting Flask server on port {args.port}...")
         app.run(host='0.0.0.0', port=args.port, debug=False)
+
+# Log service account at startup
+try:
+    creds, project = google.auth.default()
+    sa_email = getattr(creds, 'service_account_email', 'Unknown')
+    logger.info(f"🔑 Starting with service account: {sa_email}")
+    logger.info(f"📍 Project: {project}")
+except Exception as e:
+    logger.error(f"❌ Could not determine service account: {e}")

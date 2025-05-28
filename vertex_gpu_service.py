@@ -59,12 +59,13 @@ class VertexGPUJobService:
             self.accelerator_count = 1
             
             # GPU fallback options with compatible machine types
+            # Optimized for quota availability - removed P100 due to quota issues
             self.gpu_options = [
-                ("NVIDIA_TESLA_T4", "n1-standard-4", True),     # T4 spot - best compatibility  
-                ("NVIDIA_TESLA_T4", "n1-standard-4", False),    # T4 on-demand - fallback
-                ("NVIDIA_L4", "g2-standard-4", True),           # L4 spot - newer machine type
-                ("NVIDIA_L4", "g2-standard-4", False),          # L4 on-demand - fallback
-                ("NVIDIA_TESLA_P100", "n1-standard-4", False),  # P100 on-demand - last resort
+                ("NVIDIA_TESLA_T4", "n1-standard-4", True),     # T4 spot - best availability  
+                ("NVIDIA_L4", "g2-standard-4", True),           # L4 spot - newer, good availability
+                ("NVIDIA_TESLA_T4", "n1-standard-4", False),    # T4 on-demand - reliable fallback
+                ("NVIDIA_L4", "g2-standard-4", False),          # L4 on-demand - final option
+                # Removed P100 due to quota limits in recent deployments
             ]
             
             # Start with the first option
@@ -256,33 +257,49 @@ class VertexGPUJobService:
                 
                 return job_id
                 
-            except Exception as submission_error:
-                logger.error(f"❌ Job submission failed: {submission_error}")
-                logger.error(f"❌ Submission error type: {type(submission_error).__name__}")
+            except Exception as e:
+                submission_error = e
+                error_str = str(e)
+                error_type = type(e).__name__
                 
-                # Check if it's a quota issue and we have more GPU options to try
-                error_str = str(submission_error).lower()
-                if "quota" in error_str or "insufficient" in error_str:
-                    logger.error(f"📊 Quota limit reached for {self.accelerator_type} (spot: {self.current_spot})")
-                    if attempt < max_gpu_attempts - 1 and self.try_next_gpu_option():
-                        logger.info(f"🔄 Retrying with next GPU option...")
+                # Categorize errors for better handling
+                is_quota_error = "quota" in error_str.lower() or "resource exhausted" in error_str.lower()
+                is_permission_error = "permission" in error_str.lower() or "forbidden" in error_str.lower() or "unauthorized" in error_str.lower()
+                is_timeout_error = "timeout" in error_str.lower() or "deadline exceeded" in error_str.lower()
+                
+                logger.error(f"❌ GPU job submission failed (attempt {attempt + 1}/{max_gpu_attempts})")
+                logger.error(f"🔍 Error type: {error_type}")
+                logger.error(f"📝 Error message: {error_str}")
+                logger.error(f"🎯 GPU config: {self.accelerator_type} on {self.machine_type} (spot: {self.current_spot})")
+                
+                if is_quota_error:
+                    logger.warning(f"📊 Quota exhausted for {self.accelerator_type} - trying next GPU option")
+                elif is_permission_error:
+                    logger.error("🔒 Permission error detected - this may require IAM role fixes")
+                    # Don't retry other GPUs for permission errors
+                    break
+                elif is_timeout_error:
+                    logger.warning("⏱️ Timeout error - trying next GPU option")
+                else:
+                    logger.warning(f"❓ Unknown error type - trying next GPU option")
+                
+                # Try next GPU option if available
+                if attempt < max_gpu_attempts - 1:
+                    if self.try_next_gpu_option():
+                        logger.info(f"🔄 Retrying with {self.accelerator_type} (spot: {self.current_spot})")
                         continue
                     else:
-                        logger.error("❌ All GPU options exhausted")
-                        raise submission_error
-                elif "timeout" in error_str or "deadline" in error_str:
-                    logger.error("🕐 Job submission timed out - likely network connectivity issue")
-                    raise submission_error
-                elif "permission" in error_str or "auth" in error_str:
-                    logger.error("🔐 Authentication/permission issue detected")
-                    raise submission_error
+                        logger.error("❌ No more GPU options available")
+                        break
                 else:
-                    # For other errors, don't retry
-                    logger.error(f"❌ Non-retryable error: {submission_error}")
-                    raise submission_error
+                    logger.error(f"❌ All GPU options exhausted after {max_gpu_attempts} attempts")
         
-        # This should never be reached, but just in case
-        raise Exception("Failed to submit job after all GPU options exhausted")
+        # If we get here, all attempts failed
+        if submission_error:
+            logger.error(f"❌ Job submission failed with all GPU options: {submission_error}")
+            raise submission_error
+        else:
+            raise Exception("Job submission failed for unknown reasons")
 
     def create_video_job(self, image_paths: List[str], audio_path: str, story: str) -> str:
         """Create a video job from images, audio, and story using high-level API"""

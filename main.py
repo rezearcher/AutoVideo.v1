@@ -369,87 +369,99 @@ def health_check_vertex_ai():
             'timestamp': datetime.utcnow().isoformat()
         }), 500
 
-@app.route('/health/quota')
-def quota_health_check():
-    """Check GPU quota availability for different accelerator types"""
+@app.get("/health/quota")
+async def check_gpu_quota():
+    """Check GPU quota availability across multiple regions with fallback info"""
     try:
-        import subprocess
-        import json
+        # Import here to avoid issues if not available
+        from google.auth import default
+        from googleapiclient.discovery import build
         
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'av-8675309')
-        region = 'us-central1'
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "av-8675309")
+        regions_to_check = ['us-central1', 'us-west1', 'us-east1']
         
-        # GPU types to check
+        # GPU metrics to check
         gpu_metrics = [
-            'custom_model_training_nvidia_l4_gpus',
-            'custom_model_training_nvidia_t4_gpus', 
-            'custom_model_training_nvidia_p100_gpus'
+            'aiplatform.googleapis.com/custom_model_training_nvidia_l4_gpus',
+            'aiplatform.googleapis.com/custom_model_training_nvidia_t4_gpus'
         ]
         
-        quota_info = {}
+        creds, _ = default()
+        compute = build("compute", "v1", credentials=creds, cache_discovery=False)
         
-        for metric in gpu_metrics:
+        quota_info = {}
+        available_options = []
+        overall_status = "healthy"
+        
+        for region in regions_to_check:
             try:
-                # Use gcloud to check quota
-                cmd = [
-                    'gcloud', 'compute', 'regions', 'describe', region,
-                    '--project', project_id,
-                    '--format', 'json'
-                ]
+                region_info = compute.regions().get(project=project_id, region=region).execute()
+                region_quotas = {}
                 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                for quota in region_info.get('quotas', []):
+                    metric = quota.get('metric', '')
+                    if any(gpu_metric in metric for gpu_metric in gpu_metrics):
+                        usage = quota.get('usage', 0)
+                        limit = quota.get('limit', 0)
+                        available = limit - usage
+                        
+                        # Determine GPU type from metric
+                        gpu_type = "L4" if "l4" in metric else "T4" if "t4" in metric else "Unknown"
+                        
+                        region_quotas[gpu_type] = {
+                            'usage': usage,
+                            'limit': limit,
+                            'available': available
+                        }
+                        
+                        # Add to available options if quota is available
+                        if available > 0:
+                            available_options.append({
+                                'region': region,
+                                'gpu_type': gpu_type,
+                                'available_gpus': available,
+                                'machine_type': 'n1-standard-4' if gpu_type == 'T4' else 'g2-standard-4'
+                            })
                 
-                if result.returncode == 0:
-                    region_data = json.loads(result.stdout)
-                    
-                    # Find the specific quota
-                    for quota in region_data.get('quotas', []):
-                        if quota.get('metric') == f'aiplatform.googleapis.com/{metric}':
-                            usage = quota.get('usage', 0)
-                            limit = quota.get('limit', 0)
-                            available = limit - usage
-                            utilization = (usage / limit * 100) if limit > 0 else 0
-                            
-                            quota_info[metric] = {
-                                'usage': usage,
-                                'limit': limit,
-                                'available': available,
-                                'utilization_percent': round(utilization, 2),
-                                'status': 'available' if available > 0 else 'exhausted'
-                            }
-                            break
-                    else:
-                        quota_info[metric] = {'status': 'not_found', 'error': 'Quota metric not found'}
-                else:
-                    quota_info[metric] = {'status': 'error', 'error': result.stderr}
-                    
-            except subprocess.TimeoutExpired:
-                quota_info[metric] = {'status': 'timeout', 'error': 'Command timed out'}
+                quota_info[region] = region_quotas
+                
             except Exception as e:
-                quota_info[metric] = {'status': 'error', 'error': str(e)}
+                logger.warning(f"Failed to get quota for region {region}: {e}")
+                quota_info[region] = {"error": str(e)}
         
         # Determine overall status
-        available_gpus = [gpu for gpu, info in quota_info.items() 
-                         if info.get('status') == 'available' and info.get('available', 0) > 0]
+        if not available_options:
+            overall_status = "no_gpu_quota"
+        elif len(available_options) < 2:
+            overall_status = "limited_quota"
         
-        overall_status = 'healthy' if available_gpus else 'limited'
+        # Sort available options by preference (L4 > T4, us-central1 > others)
+        available_options.sort(key=lambda x: (
+            x['gpu_type'] != 'L4',  # L4 first
+            x['region'] != 'us-central1',  # us-central1 first
+            x['region']  # Then alphabetically
+        ))
         
-        return jsonify({
-            'status': overall_status,
-            'quota_info': quota_info,
-            'available_gpu_types': available_gpus,
-            'project_id': project_id,
-            'region': region,
-            'timestamp': datetime.utcnow().isoformat()
-        })
+        return {
+            "status": overall_status,
+            "quota_details": quota_info,
+            "available_options": available_options,
+            "recommendation": available_options[0] if available_options else {
+                "region": "us-central1",
+                "gpu_type": "CPU",
+                "machine_type": "n1-standard-8",
+                "note": "No GPU quota available, fallback to CPU"
+            },
+            "timestamp": time.time()
+        }
         
     except Exception as e:
-        logger.error(f"Quota health check failed: {str(e)}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
+        logger.error(f"Quota check failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": time.time()
+        }
 
 @app.route('/status')
 def status():

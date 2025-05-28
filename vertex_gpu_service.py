@@ -32,63 +32,107 @@ def initialize_vertex_ai(project_id: str, region: str, staging_bucket: str):
         _vertex_initialized = True
         logger.info("✅ Vertex AI initialized globally")
 
+def get_gpu_quota(project: str, region: str, gpu_type: str = "T4") -> Optional[Dict[str, int]]:
+    """Get GPU quota information for a specific region and type"""
+    try:
+        from google.auth import default
+        from googleapiclient.discovery import build
+        
+        # Map GPU types to metric names
+        metric_map = {
+            "T4": "aiplatform.googleapis.com/custom_model_training_nvidia_t4_gpus",
+            "L4": "aiplatform.googleapis.com/custom_model_training_nvidia_l4_gpus"
+        }
+        
+        target_metric = metric_map.get(gpu_type)
+        if not target_metric:
+            return None
+            
+        creds, _ = default()
+        compute = build("compute", "v1", credentials=creds, cache_discovery=False)
+        
+        region_info = compute.regions().get(project=project, region=region).execute()
+        
+        for quota in region_info.get('quotas', []):
+            if target_metric in quota.get('metric', ''):
+                usage = quota.get('usage', 0)
+                limit = quota.get('limit', 0)
+                available = limit - usage
+                return {
+                    'usage': usage,
+                    'limit': limit,
+                    'available': available
+                }
+        
+        return None
+        
+    except Exception as e:
+        logger.warning(f"Failed to get quota for {gpu_type} in {region}: {e}")
+        return None
+
 class VertexGPUJobService:
     def __init__(self, project_id: str, region: str = "us-central1", bucket_name: str = None):
-        try:
-            logger.info("🔧 Initializing VertexGPUJobService...")
+        """Initialize the Vertex AI GPU Job Service with intelligent fallback"""
+        self.project_id = project_id
+        self.primary_region = region
+        self.bucket_name = bucket_name or f"{project_id}-vertex-staging"
+        
+        # Define fallback configurations in priority order
+        self.fallback_configs = [
+            # Primary: L4 in us-central1
+            {"region": "us-central1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "n1-standard-4"},
+            # Fallback 1: T4 in us-central1 
+            {"region": "us-central1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4"},
+            # Fallback 2: L4 in us-west1
+            {"region": "us-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "n1-standard-4"},
+            # Fallback 3: T4 in us-west1
+            {"region": "us-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4"},
+            # Fallback 4: L4 in us-east1
+            {"region": "us-east1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "n1-standard-4"},
+            # Fallback 5: T4 in us-east1
+            {"region": "us-east1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4"},
+            # Final fallback: CPU only
+            {"region": "us-central1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8"}
+        ]
+        
+        # Initialize with primary region
+        staging_bucket = f"gs://{self.bucket_name}"
+        initialize_vertex_ai(project_id, region, staging_bucket)
+        
+        # Initialize Storage client for asset uploads
+        self.storage_client = storage.Client(project=project_id)
+        self.bucket = self.storage_client.bucket(self.bucket_name)
+        
+        logger.info(f"🔧 VertexGPUJobService initialized with project: {project_id}")
+        logger.info(f"📍 Primary region: {region}, staging bucket: {staging_bucket}")
+        logger.info(f"🔄 Fallback configs available: {len(self.fallback_configs)}")
+
+    def get_best_available_config(self) -> Dict[str, Any]:
+        """Find the best available configuration based on quota availability"""
+        logger.info("🔍 Checking GPU quota across regions...")
+        
+        for i, config in enumerate(self.fallback_configs):
+            region = config["region"]
+            gpu_type = config["gpu_type"]
             
-            self.project_id = project_id
-            self.region = region
-            # Use environment variable for bucket name to avoid hardcoding sensitive info
-            self.bucket_name = bucket_name or os.getenv('VERTEX_BUCKET_NAME', f"{project_id}-video-jobs")
+            if gpu_type is None:  # CPU-only fallback
+                logger.info(f"✅ Fallback {i+1}: CPU-only in {region} (always available)")
+                return config
+                
+            # Check quota for this configuration
+            quota_info = get_gpu_quota(self.project_id, region, gpu_type)
             
-            logger.info(f"📋 Project: {self.project_id}, Region: {self.region}, Bucket: {self.bucket_name}")
-            
-            # Initialize Vertex AI globally (once)
-            staging_bucket = f"gs://{self.bucket_name}"
-            initialize_vertex_ai(project_id, region, staging_bucket)
-            
-            # Initialize Storage client
-            logger.info("💾 Initializing GCS client...")
-            self.storage_client = storage.Client(project=project_id)
-            self.bucket = self.storage_client.bucket(self.bucket_name)
-            logger.info("✅ GCS client initialized successfully")
-            
-            # GPU job configuration - using compatible machine types for each GPU
-            self.container_image = f"gcr.io/{project_id}/av-gpu-job"
-            self.accelerator_count = 1
-            
-            # GPU fallback options with compatible machine types
-            # Optimized for quota availability - removed P100 due to quota issues
-            self.gpu_options = [
-                ("NVIDIA_TESLA_T4", "n1-standard-4", True),     # T4 spot - best availability  
-                ("NVIDIA_L4", "g2-standard-4", True),           # L4 spot - newer, good availability
-                ("NVIDIA_TESLA_T4", "n1-standard-4", False),    # T4 on-demand - reliable fallback
-                ("NVIDIA_L4", "g2-standard-4", False),          # L4 on-demand - final option
-                # Removed P100 due to quota limits in recent deployments
-            ]
-            
-            # Start with the first option
-            self.accelerator_type, self.machine_type, self.current_spot = self.gpu_options[0]
-            
-            # Job labels for tracking and filtering
-            self.job_labels = {
-                "pipeline": "autovideo",
-                "phase": "gpu",
-                "service": "av-app",
-                "environment": os.getenv("ENVIRONMENT", "production")
-            }
-            
-            logger.info(f"🎯 GPU config: {self.container_image}, {self.machine_type}, {self.accelerator_type} (spot: {self.current_spot})")
-            logger.info("✅ VertexGPUJobService initialized successfully")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize VertexGPUJobService: {e}")
-            logger.error(f"❌ Error type: {type(e).__name__}")
-            import traceback
-            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
-            raise
-    
+            if quota_info and quota_info.get('available', 0) > 0:
+                logger.info(f"✅ Fallback {i+1}: {gpu_type} available in {region} (quota: {quota_info})")
+                return config
+            else:
+                quota_msg = f"quota: {quota_info}" if quota_info else "quota check failed"
+                logger.warning(f"❌ Fallback {i+1}: {gpu_type} unavailable in {region} ({quota_msg})")
+        
+        # Should never reach here due to CPU fallback, but just in case
+        logger.error("🚨 All fallback configurations exhausted!")
+        return self.fallback_configs[-1]  # Return CPU fallback
+
     def upload_assets_to_gcs(self, job_id: str, image_paths: List[str], audio_path: str) -> Dict[str, Any]:
         """Upload images and audio to GCS with retry logic"""
         try:
@@ -182,124 +226,139 @@ class VertexGPUJobService:
             logger.error(f"❌ Failed to upload job config: {e}")
             raise
     
-    def try_next_gpu_option(self) -> bool:
-        """Try the next GPU option in the fallback list"""
-        current_index = None
-        for i, (gpu_type, machine_type, spot) in enumerate(self.gpu_options):
-            if gpu_type == self.accelerator_type and machine_type == self.machine_type and spot == self.current_spot:
-                current_index = i
-                break
+    def create_gpu_job_with_fallback(self, job_id: str, config: Dict[str, Any]) -> str:
+        """Create GPU job with intelligent fallback across regions and GPU types"""
+        logger.info(f"🚀 Creating GPU job {job_id} with intelligent fallback...")
         
-        if current_index is not None and current_index < len(self.gpu_options) - 1:
-            next_index = current_index + 1
-            self.accelerator_type, self.machine_type, self.current_spot = self.gpu_options[next_index]
-            logger.info(f"🔄 Switching to GPU option {next_index + 1}: {self.accelerator_type} (spot: {self.current_spot})")
-            return True
+        # Find the best available configuration
+        best_config = self.get_best_available_config()
+        logger.info(f"🎯 Selected configuration: {best_config}")
+        
+        # If the region differs from current, reinitialize Vertex AI
+        current_region = best_config["region"]
+        if current_region != self.primary_region:
+            logger.info(f"🔄 Switching from {self.primary_region} to {current_region}")
+            staging_bucket = f"gs://{self.bucket_name}"
+            initialize_vertex_ai(self.project_id, current_region, staging_bucket)
+        
+        # Upload job configuration
+        try:
+            job_config_url = self.create_job_config(job_id, config)
+            logger.info(f"✅ Job config uploaded: {job_config_url}")
+        except Exception as e:
+            logger.error(f"❌ Failed to upload job config: {e}")
+            raise
+        
+        # Submit the job with the selected configuration
+        return self._submit_job_with_config(job_id, best_config, job_config_url)
+    
+    def _submit_job_with_config(self, job_id: str, config: Dict[str, Any], job_config_url: str) -> str:
+        """Submit job using the specified configuration"""
+        display_name = f"av-video-render-{job_id}"
+        region = config["region"]
+        gpu_type = config["gpu_type"]
+        gpu_count = config["gpu_count"]
+        machine_type = config["machine_type"]
+        
+        # Create job labels
+        job_labels = {
+            "pipeline": "autovideo",
+            "phase": "gpu",
+            "service": "av-app",
+            "job_id": job_id,
+            "region": region.replace("-", "_"),
+            "environment": os.getenv("ENVIRONMENT", "production")
+        }
+        
+        if gpu_type:
+            job_labels["gpu_type"] = gpu_type.lower()
+            job_labels["gpu_count"] = str(gpu_count)
         else:
-            logger.warning("⚠️ No more GPU options available")
-            return False
-
-    def submit_job_with_fallback(self, job_id: str) -> str:
-        """Submit job using high-level CustomJob API with GPU fallback logic"""
-        max_gpu_attempts = len(self.gpu_options)
+            job_labels["compute_type"] = "cpu"
         
-        for attempt in range(max_gpu_attempts):
-            logger.info(f"🎬 Submitting job to Vertex AI (attempt {attempt + 1}/{max_gpu_attempts}) with {self.accelerator_type} (spot: {self.current_spot})...")
+        try:
+            logger.info(f"🚀 Submitting job to {region} with {gpu_type or 'CPU'}")
             
-            try:
-                # Create CustomJob using high-level API
-                display_name = f"av-video-render-{job_id}"
-                
-                # Create job labels with current attempt info
-                job_labels = {
-                    **self.job_labels,
-                    "job_id": job_id,
-                    "gpu_type": self.accelerator_type.lower().replace("_", "-"),
-                    "spot_vm": str(self.current_spot).lower(),
-                    "attempt": str(attempt + 1)
+            # Prepare worker pool spec
+            worker_pool_spec = {
+                "machine_spec": {
+                    "machine_type": machine_type
+                },
+                "replica_count": 1,
+                "container_spec": {
+                    "image_uri": f"gcr.io/{self.project_id}/av-gpu-job",
+                    "command": [
+                        "python", "/app/gpu_worker.py",
+                        "--job-id", job_id,
+                        "--project-id", self.project_id,
+                        "--bucket-name", self.bucket_name,
+                        "--config-url", job_config_url
+                    ],
+                    "env": [
+                        {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id},
+                        {"name": "VERTEX_AI_REGION", "value": region}
+                    ]
+                }
+            }
+            
+            # Add GPU configuration if specified
+            if gpu_type and gpu_count > 0:
+                # Map our friendly GPU names to Vertex AI types
+                gpu_type_map = {
+                    "T4": "NVIDIA_TESLA_T4",
+                    "L4": "NVIDIA_L4"
                 }
                 
-                # Use the high-level CustomJob API
-                job = aiplatform.CustomJob(
-                    display_name=display_name,
-                    project=self.project_id,
-                    location=self.region,
-                    worker_pool_specs=[{
-                        "machine_spec": {
-                            "machine_type": self.machine_type,
-                            "accelerator_type": self.accelerator_type,
-                            "accelerator_count": self.accelerator_count
-                        },
-                        "replica_count": 1,
-                        "container_spec": {
-                            "image_uri": self.container_image,
-                            "command": [
-                                "python", "/app/gpu_worker.py",
-                                "--job-id", job_id,
-                                "--project-id", self.project_id,
-                                "--bucket-name", self.bucket_name
-                            ],
-                            "env": [
-                                {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
-                            ]
-                        },
-                    }],
-                    labels=job_labels
-                )
-                
-                # Submit job asynchronously
-                logger.info(f"🚀 Submitting CustomJob: {display_name}")
-                job.submit()  # Submit the job (async by default)
-                
-                logger.info(f"✅ Job submitted successfully: {job.resource_name}")
-                logger.info(f"🎯 Job resource name: {job.resource_name}")
-                logger.info(f"🏷️ Job labels: {job_labels}")
-                
-                return job_id
-                
-            except Exception as e:
-                submission_error = e
-                error_str = str(e)
-                error_type = type(e).__name__
-                
-                # Categorize errors for better handling
-                is_quota_error = "quota" in error_str.lower() or "resource exhausted" in error_str.lower()
-                is_permission_error = "permission" in error_str.lower() or "forbidden" in error_str.lower() or "unauthorized" in error_str.lower()
-                is_timeout_error = "timeout" in error_str.lower() or "deadline exceeded" in error_str.lower()
-                
-                logger.error(f"❌ GPU job submission failed (attempt {attempt + 1}/{max_gpu_attempts})")
-                logger.error(f"🔍 Error type: {error_type}")
-                logger.error(f"📝 Error message: {error_str}")
-                logger.error(f"🎯 GPU config: {self.accelerator_type} on {self.machine_type} (spot: {self.current_spot})")
-                
-                if is_quota_error:
-                    logger.warning(f"📊 Quota exhausted for {self.accelerator_type} - trying next GPU option")
-                elif is_permission_error:
-                    logger.error("🔒 Permission error detected - this may require IAM role fixes")
-                    # Don't retry other GPUs for permission errors
-                    break
-                elif is_timeout_error:
-                    logger.warning("⏱️ Timeout error - trying next GPU option")
-                else:
-                    logger.warning(f"❓ Unknown error type - trying next GPU option")
-                
-                # Try next GPU option if available
-                if attempt < max_gpu_attempts - 1:
-                    if self.try_next_gpu_option():
-                        logger.info(f"🔄 Retrying with {self.accelerator_type} (spot: {self.current_spot})")
-                        continue
-                    else:
-                        logger.error("❌ No more GPU options available")
-                        break
-                else:
-                    logger.error(f"❌ All GPU options exhausted after {max_gpu_attempts} attempts")
-        
-        # If we get here, all attempts failed
-        if submission_error:
-            logger.error(f"❌ Job submission failed with all GPU options: {submission_error}")
-            raise submission_error
-        else:
-            raise Exception("Job submission failed for unknown reasons")
+                worker_pool_spec["machine_spec"]["accelerator_type"] = gpu_type_map[gpu_type]
+                worker_pool_spec["machine_spec"]["accelerator_count"] = gpu_count
+                logger.info(f"🎮 Using {gpu_count}x {gpu_type_map[gpu_type]} on {machine_type}")
+            else:
+                logger.info(f"🖥️ Using CPU-only: {machine_type}")
+            
+            # Create and submit the CustomJob
+            job = aiplatform.CustomJob(
+                display_name=display_name,
+                project=self.project_id,
+                location=region,
+                worker_pool_specs=[worker_pool_spec],
+                labels=job_labels
+            )
+            
+            job.submit()
+            
+            logger.info(f"✅ Job submitted successfully: {job.resource_name}")
+            logger.info(f"🎯 Resource name: {job.resource_name}")
+            logger.info(f"🏷️ Labels: {job_labels}")
+            
+            return job_id
+            
+        except Exception as e:
+            error_str = str(e)
+            logger.error(f"❌ Job submission failed: {error_str}")
+            
+            # Check if this is a quota error and we should try next fallback
+            if "quota" in error_str.lower() or "resource exhausted" in error_str.lower():
+                logger.warning(f"📊 Quota exhausted for {gpu_type or 'CPU'} in {region}")
+                # Remove this config from available options and try next
+                if config in self.fallback_configs:
+                    self.fallback_configs.remove(config)
+                    if self.fallback_configs:
+                        logger.info("🔄 Trying next fallback configuration...")
+                        return self.create_gpu_job_with_fallback(job_id, self._get_job_config_from_url(job_config_url))
+            
+            raise
+    
+    def _get_job_config_from_url(self, config_url: str) -> Dict[str, Any]:
+        """Retrieve job config from GCS URL (helper for retries)"""
+        try:
+            # Extract blob name from URL
+            blob_name = config_url.replace(f"gs://{self.bucket_name}/", "")
+            blob = self.bucket.blob(blob_name)
+            config_json = blob.download_as_text()
+            return json.loads(config_json)
+        except Exception as e:
+            logger.error(f"❌ Failed to retrieve job config: {e}")
+            return {}
 
     def create_video_job(self, image_paths: List[str], audio_path: str, story: str) -> str:
         """Create a video job from images, audio, and story using high-level API"""
@@ -333,7 +392,7 @@ class VertexGPUJobService:
             
             # Submit the job with GPU fallback logic
             logger.info("🚀 Creating Vertex AI CustomJob...")
-            return self.submit_job_with_fallback(job_id)
+            return self.create_gpu_job_with_fallback(job_id, job_data)
             
         except Exception as e:
             logger.error(f"❌ Failed to create video job: {e}")

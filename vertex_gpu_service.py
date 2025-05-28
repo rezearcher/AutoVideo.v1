@@ -52,9 +52,10 @@ class VertexGPUJobService:
             
             # GPU job configuration - using preemptible T4 for cost savings and higher quota
             self.container_image = f"gcr.io/{project_id}/av-gpu-job"
+            # Try different GPU types for quota availability
             self.machine_type = "n1-standard-4"
-            # Try preemptible T4 first for higher quota availability and 80% cost savings
-            self.accelerator_type = "NVIDIA_TESLA_T4"
+            # Try L4 GPUs which often have better quota availability
+            self.accelerator_type = "NVIDIA_L4"
             self.accelerator_count = 1
             self.use_preemptible = True  # Enable preemptible instances for cost savings
             
@@ -174,7 +175,7 @@ class VertexGPUJobService:
                             "accelerator_type": self.accelerator_type,
                             "accelerator_count": self.accelerator_count,
                         },
-                        "spot": self.use_preemptible,  # Enable preemptible/spot instances
+
                         "replica_count": 1,
                         "disk_spec": {
                             "boot_disk_type": "pd-ssd",
@@ -195,8 +196,11 @@ class VertexGPUJobService:
                 ],
                 # Enable preemptible instances for 80% cost savings and higher quota availability
                 "scheduling": {
-                    "restart_job_on_worker_restart": True
-                }
+                    "restart_job_on_worker_restart": True,
+                    "timeout": "3600s"  # 1 hour timeout for preemptible jobs
+                },
+                "enable_web_access": False,
+                "enable_dashboard_access": False
             }
         }
     

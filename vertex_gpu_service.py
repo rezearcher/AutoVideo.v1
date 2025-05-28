@@ -112,48 +112,33 @@ class VertexGPUJobService:
         
         # Define fallback configurations in priority order with spot/preemptible support
         self.fallback_configs = [
-            # Primary: L4 in us-central1 (spot first for cost optimization)
-            {"region": "us-central1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": True},
+            # Primary: L4 in us-central1 (temporarily disable spot until API is fixed)
             {"region": "us-central1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
             
-            # T4 in us-central1 (spot first)
-            {"region": "us-central1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": True},
+            # T4 in us-central1
             {"region": "us-central1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
             
-            # us-west1 GPUs (spot first)
-            {"region": "us-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": True},
+            # us-west1 GPUs
             {"region": "us-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
-            {"region": "us-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": True},
             {"region": "us-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
             
-            # us-east1 GPUs (spot first)
-            {"region": "us-east1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": True},
+            # us-east1 GPUs
             {"region": "us-east1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
-            {"region": "us-east1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": True},
             {"region": "us-east1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
             
-            # europe-west1 GPUs (spot first)
-            {"region": "europe-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": True},
+            # europe-west1 GPUs
             {"region": "europe-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
-            {"region": "europe-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": True},
             {"region": "europe-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
             
-            # asia-southeast1 GPUs (spot first)
-            {"region": "asia-southeast1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": True},
+            # asia-southeast1 GPUs
             {"region": "asia-southeast1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
-            {"region": "asia-southeast1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": True},
             {"region": "asia-southeast1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
             
-            # CPU Fallbacks: Try different regions for CPU when GPU unavailable (spot first for cost)
-            {"region": "us-central1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": True},
+            # CPU Fallbacks: Try different regions for CPU when GPU unavailable
             {"region": "us-central1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
-            {"region": "us-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": True},
             {"region": "us-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
-            {"region": "us-east1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": True},
             {"region": "us-east1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
-            {"region": "europe-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": True},
             {"region": "europe-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
-            {"region": "asia-southeast1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": True},
             {"region": "asia-southeast1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False}
         ]
         
@@ -394,11 +379,6 @@ class VertexGPUJobService:
                 }
             }
             
-            # Add spot instance configuration if requested
-            if spot:
-                worker_pool_spec["machine_spec"]["spot"] = True
-                logger.info(f"💰 Using spot instance for cost optimization")
-            
             # Add GPU configuration if specified
             if gpu_type and gpu_count > 0:
                 # Map our friendly GPU names to Vertex AI types
@@ -413,7 +393,7 @@ class VertexGPUJobService:
             else:
                 logger.info(f"🖥️ Using CPU-only: {machine_type} in {region}{spot_label}")
             
-            # Create and submit the CustomJob
+            # Create and submit the CustomJob using standard high-level API
             job = aiplatform.CustomJob(
                 display_name=display_name,
                 project=self.project_id,
@@ -437,9 +417,9 @@ class VertexGPUJobService:
                     location=self.primary_region,
                     staging_bucket=primary_staging_bucket
                 )
-            
+                
             return job_id
-            
+                
         except Exception as e:
             error_str = str(e)
             logger.error(f"❌ Job submission failed in {region}{spot_label}: {error_str}")

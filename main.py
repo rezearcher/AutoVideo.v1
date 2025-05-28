@@ -191,6 +191,15 @@ def initialize_app():
     
     logger.info("Starting application initialization...")
     
+    # Log service account at startup
+    try:
+        creds, project = google.auth.default()
+        sa_email = getattr(creds, 'service_account_email', 'Unknown')
+        logger.info(f"🔑 Starting with service account: {sa_email}")
+        logger.info(f"📍 Project: {project}")
+    except Exception as e:
+        logger.error(f"❌ Could not determine service account: {e}")
+    
     try:
         # Create necessary directories
         logger.info("Creating application directories...")
@@ -785,7 +794,6 @@ def generate_video_thread():
         send_custom_metric("pipeline_ended", 1.0, {"mode": "monitoring"})
 
 @app.route('/health/service-account', methods=['GET'])
-@require_auth
 def health_service_account():
     """Check runtime service account and permissions"""
     try:
@@ -806,7 +814,6 @@ def health_service_account():
         }), 500
 
 @app.route('/health/vertex-minimal', methods=['GET'])
-@require_auth
 def health_vertex_minimal():
     """Test minimal CustomJob creation capability"""
     try:
@@ -924,12 +931,3 @@ if __name__ == "__main__":
         # Start Flask server for monitoring and manual triggers
         logger.info(f"📊 Starting Flask server on port {args.port}...")
         app.run(host='0.0.0.0', port=args.port, debug=False)
-
-# Log service account at startup
-try:
-    creds, project = google.auth.default()
-    sa_email = getattr(creds, 'service_account_email', 'Unknown')
-    logger.info(f"🔑 Starting with service account: {sa_email}")
-    logger.info(f"📍 Project: {project}")
-except Exception as e:
-    logger.error(f"❌ Could not determine service account: {e}")

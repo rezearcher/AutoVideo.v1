@@ -54,22 +54,21 @@ class VertexGPUJobService:
             self.bucket = self.storage_client.bucket(self.bucket_name)
             logger.info("✅ GCS client initialized successfully")
             
-            # GPU job configuration - using spot VMs for cost savings and higher quota
+            # GPU job configuration - using compatible machine types for each GPU
             self.container_image = f"gcr.io/{project_id}/av-gpu-job"
-            self.machine_type = "n1-standard-4"
             self.accelerator_count = 1
             
-            # GPU fallback options (in order of preference) - spot first for cost/quota
+            # GPU fallback options with compatible machine types
             self.gpu_options = [
-                ("NVIDIA_L4", True),           # L4 spot - best quota availability
-                ("NVIDIA_TESLA_T4", True),     # T4 spot - good availability  
-                ("NVIDIA_L4", False),          # L4 on-demand - fallback
-                ("NVIDIA_TESLA_T4", False),    # T4 on-demand - fallback
-                ("NVIDIA_TESLA_P100", False),  # P100 on-demand - last resort
+                ("NVIDIA_TESLA_T4", "n1-standard-4", True),     # T4 spot - best compatibility  
+                ("NVIDIA_TESLA_T4", "n1-standard-4", False),    # T4 on-demand - fallback
+                ("NVIDIA_L4", "g2-standard-4", True),           # L4 spot - newer machine type
+                ("NVIDIA_L4", "g2-standard-4", False),          # L4 on-demand - fallback
+                ("NVIDIA_TESLA_P100", "n1-standard-4", False),  # P100 on-demand - last resort
             ]
             
             # Start with the first option
-            self.accelerator_type, self.current_spot = self.gpu_options[0]
+            self.accelerator_type, self.machine_type, self.current_spot = self.gpu_options[0]
             
             # Job labels for tracking and filtering
             self.job_labels = {
@@ -185,14 +184,14 @@ class VertexGPUJobService:
     def try_next_gpu_option(self) -> bool:
         """Try the next GPU option in the fallback list"""
         current_index = None
-        for i, (gpu_type, spot) in enumerate(self.gpu_options):
-            if gpu_type == self.accelerator_type and spot == self.current_spot:
+        for i, (gpu_type, machine_type, spot) in enumerate(self.gpu_options):
+            if gpu_type == self.accelerator_type and machine_type == self.machine_type and spot == self.current_spot:
                 current_index = i
                 break
         
         if current_index is not None and current_index < len(self.gpu_options) - 1:
             next_index = current_index + 1
-            self.accelerator_type, self.current_spot = self.gpu_options[next_index]
+            self.accelerator_type, self.machine_type, self.current_spot = self.gpu_options[next_index]
             logger.info(f"🔄 Switching to GPU option {next_index + 1}: {self.accelerator_type} (spot: {self.current_spot})")
             return True
         else:

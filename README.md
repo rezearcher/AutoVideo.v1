@@ -263,41 +263,72 @@ POST /generate            # Manually trigger video generation (requires auth + r
 
 ## 🛠️ Vertex AI GPU Processing
 
-### **On-Demand GPU Jobs**
+### **Multi-Region Intelligent Fallback System**
 
-The system uses Vertex AI Custom Jobs for cost-effective GPU processing:
+The system features enterprise-grade resilience with a comprehensive 9-tier fallback strategy:
 
 ```python
-# Automatic GPU job submission with retry logic
+# Automatic multi-region GPU/CPU job submission with intelligent fallback
 job_id = gpu_service.create_video_job(
     image_paths=generated_images,
     audio_path=voiceover_file,
     story=story_content
 )
 
-# Comprehensive timeout and retry handling
-# Automatic asset upload to GCS
-# Real-time status monitoring
+# Complete fallback chain across 3 regions:
+# 1. L4 GPU: us-central1 → us-west1 → us-east1 (g2-standard-4)
+# 2. T4 GPU: us-central1 → us-west1 → us-east1 (n1-standard-4) 
+# 3. CPU: us-central1 → us-west1 → us-east1 (n1-standard-8)
 ```
 
-### **GPU Infrastructure**
+### **Enhanced GPU Infrastructure**
 
-- **GPU**: NVIDIA Tesla T4 (16GB VRAM) with CUDA 11.8
-- **Machine**: n1-standard-4 (4 vCPU, 15GB RAM)
-- **Storage**: Direct GCS integration with retry logic
-- **Networking**: Private VPC with secure access
-- **Timeout Handling**: 60s for images, 120s for audio uploads
+- **GPU Types**: NVIDIA L4 (preferred) + T4 (fallback) with proper machine type mapping
+- **Regions**: Multi-region support (us-central1, us-west1, us-east1)
+- **CPU Fallback**: n1-standard-8 instances across all regions for maximum availability
+- **Regional Buckets**: Intelligent bucket selection per region for compliance
+- **Quota Intelligence**: Real-time quota monitoring with automatic region switching
+- **Zero-Stall Guarantee**: Pipeline will never stall due to regional resource constraints
+
+### **Intelligent Resource Selection**
+
+| Priority | GPU Type | Machine Type | Regions | Use Case |
+|----------|----------|--------------|---------|----------|
+| 1 | NVIDIA L4 | g2-standard-4 | us-central1 → us-west1 → us-east1 | Optimal performance |
+| 2 | NVIDIA T4 | n1-standard-4 | us-central1 → us-west1 → us-east1 | Cost-effective GPU |
+| 3 | CPU Only | n1-standard-8 | us-central1 → us-west1 → us-east1 | Always available |
 
 ### **Cost Optimization**
 
 | Component | Cost Model | Monthly Estimate |
 |-----------|------------|------------------|
 | Monitoring App (Cloud Run) | Always-on, auto-scaling | ~$15-20 |
-| Vertex AI GPU Jobs | Pay-per-use (5-10 min/day) | ~$15-20 |
-| Storage & Networking | Usage-based | ~$5-10 |
+| Multi-Region Vertex AI Jobs | Pay-per-use (5-10 min/day) | ~$15-20 |
+| Regional Storage & Networking | Usage-based | ~$5-10 |
 | **Total** | | **~$35-50** |
 
 **vs. Always-on GPU: ~$250/month (85% cost reduction)**
+
+### **Enhanced Quota Monitoring**
+
+```bash
+# Check real-time quota across all regions
+curl https://YOUR_CLOUD_RUN_URL/health/quota
+
+# Example response:
+{
+  "status": "healthy",
+  "available_gpu_options": [
+    {"region": "us-west1", "gpu_type": "T4", "available_gpus": 1, "machine_type": "n1-standard-4"}
+  ],
+  "cpu_fallback_options": [
+    {"region": "us-central1", "gpu_type": "CPU", "machine_type": "n1-standard-8"},
+    {"region": "us-west1", "gpu_type": "CPU", "machine_type": "n1-standard-8"},
+    {"region": "us-east1", "gpu_type": "CPU", "machine_type": "n1-standard-8"}
+  ],
+  "fallback_chain": {"total_fallbacks": 9}
+}
+```
 
 ## 📁 Project Structure
 

@@ -75,6 +75,7 @@ class TopicManager:
     def _generate_new_topics(self):
         """Generate new topics using GPT."""
         try:
+            logger.info("Generating new topics using OpenAI...")
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -94,23 +95,37 @@ class TopicManager:
                         new_topics.append(line.strip())
                     
             # Update topics
-            self.topics = new_topics[:self.max_topics]
-            self.last_update = datetime.now()
-            self._save_topics()
+            if new_topics:
+                self.topics = new_topics[:self.max_topics]
+                self.last_update = datetime.now()
+                self._save_topics()
+                logger.info(f"Successfully generated {len(self.topics)} new topics")
+            else:
+                logger.warning("No valid topics generated, using fallback")
+                self._use_fallback_topics()
             
         except Exception as e:
-            print(f"Error generating topics: {str(e)}")
+            logger.error(f"Error generating topics: {str(e)}")
             self._use_fallback_topics()
             
     def _use_fallback_topics(self):
         """Use fallback topics if GPT generation fails."""
+        logger.info("Using fallback topics")
         self.topics = [
             "Write a story about a mysterious island that appears once every hundred years",
             "Write a story about a time traveler who changes history by accident",
-            "Write a story about a robot who develops human emotions"
+            "Write a story about a robot who develops human emotions",
+            "Write a story about a detective solving a case in a futuristic city",
+            "Write a story about a person who can see glimpses of the future",
+            "Write a story about an astronaut stranded on an alien planet",
+            "Write a story about a chef who discovers their food has magical properties",
+            "Write a story about a small town where everyone mysteriously disappears at midnight",
+            "Write a story about a superhero who loses their powers at the worst possible time",
+            "Write a story about an ancient artifact that changes hands throughout history"
         ]
         self.last_update = datetime.now()
         self._save_topics()
+        logger.info(f"Set {len(self.topics)} fallback topics")
             
     def _check_and_update_topics(self):
         """Check if topics need to be updated based on the interval."""
@@ -124,26 +139,45 @@ class TopicManager:
             
     def get_next_topic(self):
         """Get the next topic while ensuring it hasn't been used in the last selection."""
+        # First, check if we need to update topics based on time
+        self._check_and_update_topics()
+        
         if not self.topics:
             # If no topics available, reset by moving all used topics back except the last used one
             if not self.used_topics:
                 # If no used topics either, generate new ones
+                logger.warning("No topics available, generating new ones...")
                 self._generate_new_topics()
             else:
                 # Move all but the last used topic back to available topics
                 last_used = self.used_topics[-1] if self.used_topics else None
                 self.topics = [topic for topic in self.used_topics[:-1] if topic != last_used]
                 self.used_topics = [last_used] if last_used else []
+                logger.info(f"Recycled {len(self.topics)} topics from used list")
                 
                 # If still no topics, generate new ones
                 if not self.topics:
+                    logger.warning("Still no topics after recycling, generating new ones...")
                     self._generate_new_topics()
+        
+        # If still no topics, use emergency fallback
+        if not self.topics:
+            logger.error("Failed to generate topics, using emergency fallback")
+            self.topics = [
+                "Write a story about a mysterious island that appears once every hundred years",
+                "Write a story about a time traveler who changes history by accident",
+                "Write a story about a robot who develops human emotions",
+                "Write a story about a detective solving a case in a futuristic city",
+                "Write a story about a person who can see glimpses of the future"
+            ]
+            self._save_topics()
         
         # Select a random topic from available ones
         selected_topic = random.choice(self.topics)
         self.topics.remove(selected_topic)
         self.used_topics.append(selected_topic)
         self._save_topics()
+        logger.info(f"Selected topic: {selected_topic[:50]}...")
         return selected_topic
         
     def force_update_topics(self):

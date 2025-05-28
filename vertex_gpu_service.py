@@ -75,7 +75,7 @@ class VertexGPUJobService:
         """Initialize the Vertex AI GPU Job Service with intelligent fallback"""
         self.project_id = project_id
         self.primary_region = region
-        self.bucket_name = bucket_name or f"{project_id}-vertex-staging"
+        self.bucket_name = bucket_name or f"{project_id}-vertex-staging-central1"
         
         # Define fallback configurations in priority order
         self.fallback_configs = [

@@ -104,6 +104,15 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test, lint]
     
+    permissions:
+      contents: read
+      id-token: write
+    
+    env:
+      WORKLOAD_IDENTITY_PROVIDER: projects/939407899550/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+      SERVICE_ACCOUNT: github-actions@av-8675309.iam.gserviceaccount.com
+      GOOGLE_CLOUD_PROJECT: av-8675309
+    
     steps:
     - uses: actions/checkout@v4
     
@@ -118,18 +127,20 @@ jobs:
         pip install -r requirements.txt
         pip install pytest
     
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v1
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
       with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
     
     - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@v1
+      uses: google-github-actions/setup-gcloud@v2
     
     - name: Run integration tests
       run: |
         python -m pytest test_vertex_gpu_compatibility.py::TestGPUCompatibilityIntegration -v
       env:
-        GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+        GOOGLE_CLOUD_PROJECT: ${{ env.GOOGLE_CLOUD_PROJECT }}
         RUN_INTEGRATION_TESTS: 1
         PYTHONPATH: . 

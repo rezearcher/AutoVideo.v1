@@ -8,6 +8,8 @@ on:
 
 env:
   GOOGLE_CLOUD_PROJECT: av-8675309
+  WORKLOAD_IDENTITY_PROVIDER: projects/939407899550/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  SERVICE_ACCOUNT: github-actions@av-8675309.iam.gserviceaccount.com
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
   YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
@@ -19,6 +21,10 @@ jobs:
     name: Generate and Upload Video
     runs-on: ubuntu-latest
     timeout-minutes: 60  # 1 hour timeout
+    
+    permissions:
+      contents: read
+      id-token: write
     
     steps:
       - name: Checkout code
@@ -42,15 +48,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           
-      - name: Authenticate to Google Cloud
+      - name: Google Auth
+        id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GOOGLE_CLOUD_SA_KEY }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
           
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: av-8675309
           
       - name: Configure Docker for GCR
         run: gcloud auth configure-docker

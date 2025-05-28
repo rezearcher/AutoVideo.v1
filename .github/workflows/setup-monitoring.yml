@@ -16,8 +16,10 @@ on:
       - '.github/workflows/setup-monitoring.yml'
 
 env:
-  PROJECT_ID: ${{ secrets.GOOGLE_CLOUD_PROJECT_ID }}
+  PROJECT_ID: av-8675309
   REGION: us-central1
+  WORKLOAD_IDENTITY_PROVIDER: projects/939407899550/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  SERVICE_ACCOUNT: github-actions@av-8675309.iam.gserviceaccount.com
 
 jobs:
   setup-monitoring:
@@ -42,15 +44,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install google-cloud-monitoring google-cloud-logging google-cloud-error-reporting pyyaml
 
-    - name: Authenticate to Google Cloud
+    - name: Google Auth
+      id: auth
       uses: google-github-actions/auth@v2
       with:
-        credentials_json: ${{ secrets.GOOGLE_CLOUD_SA_KEY }}
+        workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
 
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
-      with:
-        project_id: ${{ env.PROJECT_ID }}
 
     - name: Verify Google Cloud authentication
       run: |

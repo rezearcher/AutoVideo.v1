@@ -417,8 +417,12 @@ async def check_gpu_quota():
                         
                         # Add to available options if quota is available (both spot and on-demand)
                         if available > 0:
-                            # Use correct machine type for each GPU type
-                            machine_type = 'g2-standard-4' if gpu_type == 'L4' else 'n1-standard-4'
+                            # Use correct machine type for each GPU type from static mapping
+                            from vertex_gpu_service import get_machine_type_for_gpu
+                            machine_type = get_machine_type_for_gpu(region, f'NVIDIA_{gpu_type}')
+                            if not machine_type:
+                                # Fallback to default mapping if not found
+                                machine_type = 'g2-standard-8' if gpu_type == 'L4' else 'n1-standard-4'
                             
                             # Add spot option first (cost optimization)
                             available_options.append({

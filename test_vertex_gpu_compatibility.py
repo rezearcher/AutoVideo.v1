@@ -19,8 +19,8 @@ class TestGPUCompatibilityMapping(unittest.TestCase):
         self.project_id = "test-project"
         self.test_regions = ["us-central1", "us-west1", "us-east1"]
         
-    @patch('vertex_gpu_service.build')
-    @patch('vertex_gpu_service.default')
+    @patch('googleapiclient.discovery.build')
+    @patch('google.auth.default')
     def test_static_mapping_availability(self, mock_auth, mock_build):
         """Test that static mappings correspond to available machine types"""
         # Mock the Compute Engine API responses

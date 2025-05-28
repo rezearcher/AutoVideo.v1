@@ -555,7 +555,7 @@ def generate_video_batch():
             def _initialize_vertex_service():
                 """Initialize Vertex AI service in a separate thread"""
                 try:
-                    logger.info("🔧 Starting VertexGPUJobService initialization with 60s timeout...")
+                    logger.info("🔧 Starting VertexGPUJobService initialization with 180s timeout...")
                     from vertex_gpu_service import VertexGPUJobService
                     logger.info("✅ Import successful, creating service instance...")
                     
@@ -586,12 +586,12 @@ def generate_video_batch():
             init_thread = threading.Thread(target=_worker)
             init_thread.daemon = True
             init_thread.start()
-            init_thread.join(timeout=60)  # 60 second timeout
+            init_thread.join(timeout=180)  # 180 second timeout
             
             if init_thread.is_alive():
-                logger.error("🕐 GPU service initialization timed out after 60 seconds")
+                logger.error("🕐 GPU service initialization timed out after 180 seconds")
                 logger.error("🔄 Falling back to local processing due to initialization timeout")
-                raise Exception("Vertex AI initialization timeout: exceeded 60 seconds")
+                raise Exception("Vertex AI initialization timeout: exceeded 180 seconds")
             
             # Check for exceptions
             if not exception_queue.empty():
@@ -760,7 +760,7 @@ def generate_video_thread():
             def _initialize_vertex_service():
                 """Initialize Vertex AI service in a separate thread"""
                 try:
-                    logger.info("🔧 Starting VertexGPUJobService initialization with 60s timeout...")
+                    logger.info("🔧 Starting VertexGPUJobService initialization with 180s timeout...")
                     from vertex_gpu_service import VertexGPUJobService
                     logger.info("✅ Import successful, creating service instance...")
                     
@@ -791,12 +791,12 @@ def generate_video_thread():
             init_thread = threading.Thread(target=_worker)
             init_thread.daemon = True
             init_thread.start()
-            init_thread.join(timeout=60)  # 60 second timeout
+            init_thread.join(timeout=180)  # 180 second timeout
             
             if init_thread.is_alive():
-                logger.error("🕐 GPU service initialization timed out after 60 seconds")
+                logger.error("🕐 GPU service initialization timed out after 180 seconds")
                 logger.error("🔄 Falling back to local processing due to initialization timeout")
-                raise Exception("Vertex AI initialization timeout: exceeded 60 seconds")
+                raise Exception("Vertex AI initialization timeout: exceeded 180 seconds")
             
             # Check for exceptions
             if not exception_queue.empty():

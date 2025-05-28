@@ -12,6 +12,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from youtube_uploader import upload_video, YouTubeConfig
 
+
 def main():
     # Example video path (replace with your video path)
     video_path = "output/run_20250429_190148/video/final_video.mp4"

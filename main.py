@@ -524,6 +524,91 @@ async def check_gpu_quota():
             "timestamp": time.time()
         }
 
+@app.route('/health/machine-types')
+def health_check_machine_types():
+    """Validate GPU machine type mappings across regions"""
+    try:
+        global vertex_gpu_service
+        
+        if vertex_gpu_service is None:
+            return jsonify({
+                'status': 'unhealthy',
+                'error': 'VertexGPUJobService not initialized',
+                'timestamp': datetime.utcnow().isoformat()
+            }), 500
+        
+        # Import the mapping functions
+        from vertex_gpu_service import REGION_GPU_MACHINE_MAP, discover_gpu_machine_compatibility
+        
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        regions = ['us-central1', 'us-west1', 'us-east1', 'europe-west1', 'asia-southeast1']
+        
+        validation_results = {}
+        overall_status = "healthy"
+        
+        for region in regions:
+            try:
+                # Get static mapping
+                static_mapping = REGION_GPU_MACHINE_MAP.get(region, {})
+                
+                # Discover dynamic mapping
+                dynamic_mapping = discover_gpu_machine_compatibility(project_id, region)
+                
+                # Compare and validate
+                region_status = {
+                    'static_mapping': static_mapping,
+                    'dynamic_mapping': dynamic_mapping,
+                    'validation': {},
+                    'status': 'healthy'
+                }
+                
+                # Validate each GPU type
+                for gpu_type in ['NVIDIA_L4', 'NVIDIA_TESLA_T4', 'CPU']:
+                    static_machine = static_mapping.get(gpu_type)
+                    dynamic_machine = dynamic_mapping.get(gpu_type)
+                    
+                    if static_machine and dynamic_machine:
+                        if static_machine == dynamic_machine:
+                            region_status['validation'][gpu_type] = 'match'
+                        else:
+                            region_status['validation'][gpu_type] = f'mismatch: static={static_machine}, dynamic={dynamic_machine}'
+                            region_status['status'] = 'warning'
+                    elif dynamic_machine:
+                        region_status['validation'][gpu_type] = f'dynamic_only: {dynamic_machine}'
+                        region_status['status'] = 'info'
+                    elif static_machine:
+                        region_status['validation'][gpu_type] = f'static_only: {static_machine}'
+                        region_status['status'] = 'warning'
+                    else:
+                        region_status['validation'][gpu_type] = 'not_available'
+                
+                validation_results[region] = region_status
+                
+                if region_status['status'] == 'warning':
+                    overall_status = 'warning'
+                    
+            except Exception as e:
+                validation_results[region] = {
+                    'status': 'error',
+                    'error': str(e)
+                }
+                overall_status = 'warning'
+        
+        return jsonify({
+            'status': overall_status,
+            'validation_results': validation_results,
+            'fallback_configs_count': len(vertex_gpu_service.fallback_configs),
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Machine type validation failed: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
 @app.route('/status')
 def status():
     """Get the current status of video generation."""

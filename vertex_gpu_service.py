@@ -19,6 +19,35 @@ logger = logging.getLogger(__name__)
 # Global Vertex AI initialization - done once at module level
 _vertex_initialized = False
 
+# Region-to-GPU-Machine mappings based on actual GCP availability discovery
+REGION_GPU_MACHINE_MAP = {
+    "us-central1": {
+        "NVIDIA_L4": "g2-standard-4",
+        "NVIDIA_TESLA_T4": "n1-standard-4",
+        "CPU": "n1-standard-8"
+    },
+    "us-west1": {
+        "NVIDIA_L4": "g2-standard-4", 
+        "NVIDIA_TESLA_T4": "n1-standard-4",
+        "CPU": "n1-standard-8"
+    },
+    "us-east1": {
+        "NVIDIA_L4": "g2-standard-4",
+        "NVIDIA_TESLA_T4": "n1-standard-4", 
+        "CPU": "n1-standard-8"
+    },
+    "europe-west1": {
+        "NVIDIA_L4": "g2-standard-4",  # Will validate dynamically
+        "NVIDIA_TESLA_T4": "n1-standard-4",
+        "CPU": "n1-standard-8"
+    },
+    "asia-southeast1": {
+        "NVIDIA_L4": "g2-standard-4",  # Will validate dynamically
+        "NVIDIA_TESLA_T4": "n1-standard-4",
+        "CPU": "n1-standard-8"
+    }
+}
+
 def initialize_vertex_ai(project_id: str, region: str, staging_bucket: str):
     """Initialize Vertex AI once globally"""
     global _vertex_initialized
@@ -96,6 +125,97 @@ def get_multi_region_quota_status(project_id: str, regions: List[str] = None) ->
     
     return quota_status
 
+def discover_gpu_machine_compatibility(project_id: str, region: str) -> Dict[str, str]:
+    """Dynamically discover GPU and machine type compatibility for a region"""
+    try:
+        from googleapiclient.discovery import build
+        from google.auth import default
+        
+        creds, _ = default()
+        compute = build("compute", "v1", credentials=creds, cache_discovery=False)
+        
+        # Get all zones in the region
+        zones_result = compute.zones().list(project=project_id, filter=f"region eq .*{region}").execute()
+        zones = [zone['name'] for zone in zones_result.get('items', [])]
+        
+        if not zones:
+            logger.warning(f"No zones found for region {region}")
+            return {}
+        
+        # Check first zone for available accelerators and machine types
+        zone = zones[0]
+        
+        # Get available accelerators
+        accelerators = compute.acceleratorTypes().list(project=project_id, zone=zone).execute()
+        available_gpus = set()
+        
+        for acc in accelerators.get('items', []):
+            acc_name = acc.get('name', '')
+            if 'nvidia-l4' in acc_name:
+                available_gpus.add('NVIDIA_L4')
+            elif 'nvidia-tesla-t4' in acc_name:
+                available_gpus.add('NVIDIA_TESLA_T4')
+        
+        # Get available machine types
+        machine_types = compute.machineTypes().list(project=project_id, zone=zone).execute()
+        available_machines = set()
+        
+        for mt in machine_types.get('items', []):
+            mt_name = mt.get('name', '')
+            if mt_name.startswith(('g2-standard', 'n1-standard', 'n2-standard')):
+                available_machines.add(mt_name)
+        
+        # Build compatibility map
+        compatibility = {"CPU": "n1-standard-8"}  # CPU always available
+        
+        if 'NVIDIA_L4' in available_gpus:
+            if 'g2-standard-4' in available_machines:
+                compatibility['NVIDIA_L4'] = 'g2-standard-4'
+            elif 'n2-standard-4' in available_machines:
+                compatibility['NVIDIA_L4'] = 'n2-standard-4'
+            else:
+                logger.warning(f"L4 GPU available in {region} but no compatible machine type found")
+        
+        if 'NVIDIA_TESLA_T4' in available_gpus:
+            if 'n1-standard-4' in available_machines:
+                compatibility['NVIDIA_TESLA_T4'] = 'n1-standard-4'
+            elif 'n2-standard-4' in available_machines:
+                compatibility['NVIDIA_TESLA_T4'] = 'n2-standard-4'
+            else:
+                logger.warning(f"T4 GPU available in {region} but no compatible machine type found")
+        
+        logger.info(f"Discovered compatibility for {region}: {compatibility}")
+        return compatibility
+        
+    except Exception as e:
+        logger.error(f"Failed to discover compatibility for {region}: {e}")
+        return {"CPU": "n1-standard-8"}  # Fallback to CPU
+
+def get_machine_type_for_gpu(region: str, gpu_type: str, project_id: str = None) -> Optional[str]:
+    """Get the appropriate machine type for a GPU type in a specific region"""
+    # First try the static mapping
+    if region in REGION_GPU_MACHINE_MAP:
+        machine_type = REGION_GPU_MACHINE_MAP[region].get(gpu_type)
+        if machine_type:
+            logger.info(f"Using static mapping: {gpu_type} -> {machine_type} in {region}")
+            return machine_type
+    
+    # If not in static mapping or project_id provided, try dynamic discovery
+    if project_id:
+        logger.info(f"Attempting dynamic discovery for {gpu_type} in {region}")
+        compatibility = discover_gpu_machine_compatibility(project_id, region)
+        machine_type = compatibility.get(gpu_type)
+        if machine_type:
+            logger.info(f"Dynamic discovery: {gpu_type} -> {machine_type} in {region}")
+            # Update static mapping for future use
+            if region not in REGION_GPU_MACHINE_MAP:
+                REGION_GPU_MACHINE_MAP[region] = {}
+            REGION_GPU_MACHINE_MAP[region][gpu_type] = machine_type
+            return machine_type
+    
+    logger.warning(f"No machine type found for {gpu_type} in {region}")
+    return None
+
 class VertexGPUJobService:
     def __init__(self, project_id: str, region: str = "us-central1", bucket_name: str = None):
         """Initialize the Vertex AI GPU Job Service with intelligent fallback"""
@@ -110,37 +230,8 @@ class VertexGPUJobService:
         self.primary_region = region
         self.bucket_name = bucket_name or f"{project_id}-vertex-staging-central1"
         
-        # Define fallback configurations in priority order with spot/preemptible support
-        self.fallback_configs = [
-            # Primary: L4 in us-central1 (temporarily disable spot until API is fixed)
-            {"region": "us-central1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
-            
-            # T4 in us-central1
-            {"region": "us-central1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
-            
-            # us-west1 GPUs
-            {"region": "us-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
-            {"region": "us-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
-            
-            # us-east1 GPUs
-            {"region": "us-east1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
-            {"region": "us-east1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
-            
-            # europe-west1 GPUs
-            {"region": "europe-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
-            {"region": "europe-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
-            
-            # asia-southeast1 GPUs
-            {"region": "asia-southeast1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
-            {"region": "asia-southeast1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
-            
-            # CPU Fallbacks: Try different regions for CPU when GPU unavailable
-            {"region": "us-central1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
-            {"region": "us-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
-            {"region": "us-east1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
-            {"region": "europe-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
-            {"region": "asia-southeast1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False}
-        ]
+        # Generate fallback configurations dynamically using machine type mapping
+        self.fallback_configs = self._generate_fallback_configs()
         
         # Initialize with primary region
         staging_bucket = f"gs://{self.bucket_name}"
@@ -153,6 +244,44 @@ class VertexGPUJobService:
         logger.info(f"🔧 VertexGPUJobService initialized with project: {project_id}")
         logger.info(f"📍 Primary region: {region}, staging bucket: {staging_bucket}")
         logger.info(f"🔄 Fallback configs available: {len(self.fallback_configs)}")
+
+    def _generate_fallback_configs(self) -> List[Dict[str, Any]]:
+        """Generate fallback configurations using dynamic machine type mapping"""
+        regions = ['us-central1', 'us-west1', 'us-east1', 'europe-west1', 'asia-southeast1']
+        gpu_types = ['L4', 'T4']
+        configs = []
+        
+        # Generate GPU configurations
+        for region in regions:
+            for gpu_type in gpu_types:
+                vertex_gpu_type = f"NVIDIA_{gpu_type}" if gpu_type == "L4" else "NVIDIA_TESLA_T4"
+                machine_type = get_machine_type_for_gpu(region, vertex_gpu_type, self.project_id)
+                
+                if machine_type:
+                    configs.append({
+                        "region": region,
+                        "gpu_type": gpu_type,
+                        "gpu_count": 1,
+                        "machine_type": machine_type,
+                        "spot": False
+                    })
+                    logger.info(f"✅ Added fallback: {gpu_type} on {machine_type} in {region}")
+                else:
+                    logger.warning(f"⚠️ Skipped {gpu_type} in {region} - no compatible machine type")
+        
+        # Add CPU fallbacks for all regions
+        for region in regions:
+            cpu_machine_type = get_machine_type_for_gpu(region, "CPU", self.project_id)
+            configs.append({
+                "region": region,
+                "gpu_type": None,
+                "gpu_count": 0,
+                "machine_type": cpu_machine_type or "n1-standard-8",
+                "spot": False
+            })
+        
+        logger.info(f"🎯 Generated {len(configs)} fallback configurations")
+        return configs
 
     def get_best_available_config(self) -> Dict[str, Any]:
         """Find the best available configuration based on quota availability"""

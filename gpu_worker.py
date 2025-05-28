@@ -17,13 +17,8 @@ from typing import Any, Dict, List
 
 import numpy as np
 from google.cloud import storage
-from moviepy.editor import (
-    AudioFileClip,
-    CompositeVideoClip,
-    ImageClip,
-    VideoFileClip,
-    concatenate_videoclips,
-)
+from moviepy.editor import (AudioFileClip, CompositeVideoClip, ImageClip,
+                            VideoFileClip, concatenate_videoclips)
 
 from caption_generator import add_captions_to_video, create_caption_images
 

@@ -7,11 +7,9 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
-from vertex_gpu_service import (
-    REGION_GPU_MACHINE_MAP,
-    discover_gpu_machine_compatibility,
-    get_machine_type_for_gpu,
-)
+from vertex_gpu_service import (REGION_GPU_MACHINE_MAP,
+                                discover_gpu_machine_compatibility,
+                                get_machine_type_for_gpu)
 
 
 class TestGPUCompatibilityMapping(unittest.TestCase):

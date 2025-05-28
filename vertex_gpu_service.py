@@ -70,31 +70,91 @@ def get_gpu_quota(project: str, region: str, gpu_type: str = "T4") -> Optional[D
         logger.warning(f"Failed to get quota for {gpu_type} in {region}: {e}")
         return None
 
+def quota_ok(project_id: str, region: str, gpu_type: str) -> bool:
+    """Check if quota is available for a specific GPU type in a region"""
+    quota_info = get_gpu_quota(project_id, region, gpu_type)
+    return quota_info and quota_info.get('available', 0) > 0
+
+def get_multi_region_quota_status(project_id: str, regions: List[str] = None) -> Dict[str, Dict[str, Any]]:
+    """Get quota status across multiple regions for comprehensive availability check"""
+    if regions is None:
+        regions = ['us-central1', 'us-west1', 'us-east1', 'europe-west1', 'asia-southeast1']
+    
+    gpu_types = ['L4', 'T4']
+    quota_status = {}
+    
+    for region in regions:
+        region_status = {}
+        for gpu_type in gpu_types:
+            quota_info = get_gpu_quota(project_id, region, gpu_type)
+            region_status[gpu_type] = {
+                'available': quota_info.get('available', 0) if quota_info else 0,
+                'quota_ok': quota_ok(project_id, region, gpu_type),
+                'quota_info': quota_info
+            }
+        quota_status[region] = region_status
+    
+    return quota_status
+
 class VertexGPUJobService:
     def __init__(self, project_id: str, region: str = "us-central1", bucket_name: str = None):
         """Initialize the Vertex AI GPU Job Service with intelligent fallback"""
         self.project_id = project_id
+        
+        # Allow region override via environment variable for immediate workarounds
+        override_region = os.getenv("DEFAULT_REGION")
+        if override_region:
+            logger.info(f"🌍 Region override detected: {override_region} (from DEFAULT_REGION env var)")
+            region = override_region
+        
         self.primary_region = region
         self.bucket_name = bucket_name or f"{project_id}-vertex-staging-central1"
         
-        # Define fallback configurations in priority order
+        # Define fallback configurations in priority order with spot/preemptible support
         self.fallback_configs = [
-            # Primary: L4 in us-central1 (L4 requires g2-standard-4)
-            {"region": "us-central1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4"},
-            # Fallback 1: T4 in us-central1 (T4 works with n1-standard-4)
-            {"region": "us-central1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4"},
-            # Fallback 2: L4 in us-west1
-            {"region": "us-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4"},
-            # Fallback 3: T4 in us-west1
-            {"region": "us-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4"},
-            # Fallback 4: L4 in us-east1
-            {"region": "us-east1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4"},
-            # Fallback 5: T4 in us-east1
-            {"region": "us-east1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4"},
-            # CPU Fallbacks: Try different regions for CPU when GPU unavailable
-            {"region": "us-central1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8"},
-            {"region": "us-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8"},
-            {"region": "us-east1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8"}
+            # Primary: L4 in us-central1 (spot first for cost optimization)
+            {"region": "us-central1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": True},
+            {"region": "us-central1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
+            
+            # T4 in us-central1 (spot first)
+            {"region": "us-central1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": True},
+            {"region": "us-central1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
+            
+            # us-west1 GPUs (spot first)
+            {"region": "us-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": True},
+            {"region": "us-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
+            {"region": "us-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": True},
+            {"region": "us-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
+            
+            # us-east1 GPUs (spot first)
+            {"region": "us-east1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": True},
+            {"region": "us-east1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
+            {"region": "us-east1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": True},
+            {"region": "us-east1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
+            
+            # europe-west1 GPUs (spot first)
+            {"region": "europe-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": True},
+            {"region": "europe-west1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
+            {"region": "europe-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": True},
+            {"region": "europe-west1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
+            
+            # asia-southeast1 GPUs (spot first)
+            {"region": "asia-southeast1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": True},
+            {"region": "asia-southeast1", "gpu_type": "L4", "gpu_count": 1, "machine_type": "g2-standard-4", "spot": False},
+            {"region": "asia-southeast1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": True},
+            {"region": "asia-southeast1", "gpu_type": "T4", "gpu_count": 1, "machine_type": "n1-standard-4", "spot": False},
+            
+            # CPU Fallbacks: Try different regions for CPU when GPU unavailable (spot first for cost)
+            {"region": "us-central1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": True},
+            {"region": "us-central1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
+            {"region": "us-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": True},
+            {"region": "us-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
+            {"region": "us-east1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": True},
+            {"region": "us-east1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
+            {"region": "europe-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": True},
+            {"region": "europe-west1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False},
+            {"region": "asia-southeast1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": True},
+            {"region": "asia-southeast1", "gpu_type": None, "gpu_count": 0, "machine_type": "n1-standard-8", "spot": False}
         ]
         
         # Initialize with primary region
@@ -117,9 +177,12 @@ class VertexGPUJobService:
             region = config["region"]
             gpu_type = config["gpu_type"]
             machine_type = config["machine_type"]
+            spot = config.get("spot", False)
+            
+            spot_label = " (spot)" if spot else " (on-demand)"
             
             if gpu_type is None:  # CPU-only fallback
-                logger.info(f"✅ Fallback {i+1}: CPU-only ({machine_type}) in {region}")
+                logger.info(f"✅ Fallback {i+1}: CPU-only ({machine_type}) in {region}{spot_label}")
                 # CPU is generally always available, but we could add CPU quota checking here if needed
                 # For now, we'll trust that CPU resources are more readily available
                 return config
@@ -128,11 +191,11 @@ class VertexGPUJobService:
             quota_info = get_gpu_quota(self.project_id, region, gpu_type)
             
             if quota_info and quota_info.get('available', 0) > 0:
-                logger.info(f"✅ Fallback {i+1}: {gpu_type} available in {region} (quota: {quota_info})")
+                logger.info(f"✅ Fallback {i+1}: {gpu_type} available in {region}{spot_label} (quota: {quota_info})")
                 return config
             else:
                 quota_msg = f"quota: {quota_info}" if quota_info else "quota check failed"
-                logger.warning(f"❌ Fallback {i+1}: {gpu_type} unavailable in {region} ({quota_msg})")
+                logger.warning(f"❌ Fallback {i+1}: {gpu_type} unavailable in {region}{spot_label} ({quota_msg})")
         
         # Should never reach here due to CPU fallback, but just in case
         logger.error("🚨 All fallback configurations exhausted!")
@@ -264,6 +327,7 @@ class VertexGPUJobService:
         gpu_type = config["gpu_type"]
         gpu_count = config["gpu_count"]
         machine_type = config["machine_type"]
+        spot = config.get("spot", False)
         
         # For non-primary regions, we need to ensure we have regional bucket access
         regional_bucket_name = self.bucket_name
@@ -282,7 +346,8 @@ class VertexGPUJobService:
             "service": "av-app",
             "job_id": job_id,
             "region": region.replace("-", "_"),
-            "environment": os.getenv("ENVIRONMENT", "production")
+            "environment": os.getenv("ENVIRONMENT", "production"),
+            "instance_type": "spot" if spot else "on_demand"
         }
         
         if gpu_type:
@@ -291,8 +356,10 @@ class VertexGPUJobService:
         else:
             job_labels["compute_type"] = "cpu"
         
+        spot_label = " (spot)" if spot else " (on-demand)"
+        
         try:
-            logger.info(f"🚀 Submitting job to {region} with {gpu_type or 'CPU'}")
+            logger.info(f"🚀 Submitting job to {region} with {gpu_type or 'CPU'}{spot_label}")
             
             # For cross-region deployments, we need to reinitialize Vertex AI for the target region
             if region != self.primary_region:
@@ -327,6 +394,11 @@ class VertexGPUJobService:
                 }
             }
             
+            # Add spot instance configuration if requested
+            if spot:
+                worker_pool_spec["machine_spec"]["spot"] = True
+                logger.info(f"💰 Using spot instance for cost optimization")
+            
             # Add GPU configuration if specified
             if gpu_type and gpu_count > 0:
                 # Map our friendly GPU names to Vertex AI types
@@ -337,9 +409,9 @@ class VertexGPUJobService:
                 
                 worker_pool_spec["machine_spec"]["accelerator_type"] = gpu_type_map[gpu_type]
                 worker_pool_spec["machine_spec"]["accelerator_count"] = gpu_count
-                logger.info(f"🎮 Using {gpu_count}x {gpu_type_map[gpu_type]} on {machine_type} in {region}")
+                logger.info(f"🎮 Using {gpu_count}x {gpu_type_map[gpu_type]} on {machine_type} in {region}{spot_label}")
             else:
-                logger.info(f"🖥️ Using CPU-only: {machine_type} in {region}")
+                logger.info(f"🖥️ Using CPU-only: {machine_type} in {region}{spot_label}")
             
             # Create and submit the CustomJob
             job = aiplatform.CustomJob(
@@ -370,7 +442,7 @@ class VertexGPUJobService:
             
         except Exception as e:
             error_str = str(e)
-            logger.error(f"❌ Job submission failed in {region}: {error_str}")
+            logger.error(f"❌ Job submission failed in {region}{spot_label}: {error_str}")
             
             # If we switched regions for this attempt, make sure we switch back
             if region != self.primary_region:
@@ -387,7 +459,7 @@ class VertexGPUJobService:
             
             # Check if this is a quota error and we should try next fallback
             if "quota" in error_str.lower() or "resource exhausted" in error_str.lower():
-                logger.warning(f"📊 Quota exhausted for {gpu_type or 'CPU'} in {region}")
+                logger.warning(f"📊 Quota exhausted for {gpu_type or 'CPU'} in {region}{spot_label}")
                 # Remove this config from available options and try next
                 if config in self.fallback_configs:
                     self.fallback_configs.remove(config)

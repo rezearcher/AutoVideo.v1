@@ -378,7 +378,7 @@ async def check_gpu_quota():
         from googleapiclient.discovery import build
         
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "av-8675309")
-        regions_to_check = ['us-central1', 'us-west1', 'us-east1']
+        regions_to_check = ['us-central1', 'us-west1', 'us-east1', 'europe-west1', 'asia-southeast1']
         
         # GPU metrics to check
         gpu_metrics = [
@@ -415,24 +415,50 @@ async def check_gpu_quota():
                             'available': available
                         }
                         
-                        # Add to available options if quota is available
+                        # Add to available options if quota is available (both spot and on-demand)
                         if available > 0:
                             # Use correct machine type for each GPU type
                             machine_type = 'g2-standard-4' if gpu_type == 'L4' else 'n1-standard-4'
+                            
+                            # Add spot option first (cost optimization)
                             available_options.append({
                                 'region': region,
                                 'gpu_type': gpu_type,
                                 'available_gpus': available,
-                                'machine_type': machine_type
+                                'machine_type': machine_type,
+                                'spot': True,
+                                'cost_tier': 'low'
+                            })
+                            
+                            # Add on-demand option
+                            available_options.append({
+                                'region': region,
+                                'gpu_type': gpu_type,
+                                'available_gpus': available,
+                                'machine_type': machine_type,
+                                'spot': False,
+                                'cost_tier': 'standard'
                             })
                 
-                # Add CPU option for each region (CPU is generally always available)
-                cpu_options.append({
-                    'region': region,
-                    'gpu_type': 'CPU',
-                    'machine_type': 'n1-standard-8',
-                    'note': 'CPU fallback - high availability'
-                })
+                # Add CPU options for each region (both spot and on-demand)
+                cpu_options.extend([
+                    {
+                        'region': region,
+                        'gpu_type': 'CPU',
+                        'machine_type': 'n1-standard-8',
+                        'spot': True,
+                        'cost_tier': 'low',
+                        'note': 'CPU fallback - high availability'
+                    },
+                    {
+                        'region': region,
+                        'gpu_type': 'CPU',
+                        'machine_type': 'n1-standard-8',
+                        'spot': False,
+                        'cost_tier': 'standard',
+                        'note': 'CPU fallback - high availability'
+                    }
+                ])
                 
                 quota_info[region] = region_quotas
                 
@@ -441,26 +467,33 @@ async def check_gpu_quota():
                 quota_info[region] = {"error": str(e)}
         
         # Determine overall status
-        if not available_options:
+        gpu_regions_available = len(set(opt['region'] for opt in available_options if opt['gpu_type'] != 'CPU'))
+        if gpu_regions_available == 0:
             overall_status = "no_gpu_quota"
-        elif len(available_options) < 2:
+        elif gpu_regions_available < 2:
             overall_status = "limited_quota"
         
-        # Sort available options by preference (L4 > T4, us-central1 > others)
+        # Sort available options by preference (L4 > T4, spot > on-demand, us-central1 > others)
         available_options.sort(key=lambda x: (
             x['gpu_type'] != 'L4',  # L4 first
+            not x['spot'],  # Spot first for cost optimization
             x['region'] != 'us-central1',  # us-central1 first
             x['region']  # Then alphabetically
         ))
         
-        # Sort CPU options by region preference
+        # Sort CPU options by region and cost preference
         cpu_options.sort(key=lambda x: (
+            not x['spot'],  # Spot first for cost optimization
             x['region'] != 'us-central1',  # us-central1 first
             x['region']  # Then alphabetically
         ))
         
         # Build recommendation including fallback chain
         primary_recommendation = available_options[0] if available_options else cpu_options[0]
+        
+        # Calculate cost savings potential
+        spot_gpu_options = [opt for opt in available_options if opt['spot']]
+        cost_savings_potential = len(spot_gpu_options) / max(len(available_options), 1) * 100 if available_options else 0
         
         return {
             "status": overall_status,
@@ -471,7 +504,14 @@ async def check_gpu_quota():
             "fallback_chain": {
                 "gpu_options": available_options,
                 "cpu_options": cpu_options,
-                "total_fallbacks": len(available_options) + len(cpu_options)
+                "total_fallbacks": len(available_options) + len(cpu_options),
+                "regions_covered": len(regions_to_check),
+                "gpu_regions_available": gpu_regions_available
+            },
+            "cost_optimization": {
+                "spot_options_available": len(spot_gpu_options),
+                "cost_savings_potential_percent": round(cost_savings_potential, 1),
+                "estimated_cost_reduction": "60-90%" if spot_gpu_options else "0%"
             },
             "timestamp": time.time()
         }

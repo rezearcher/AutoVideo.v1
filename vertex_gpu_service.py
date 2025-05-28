@@ -249,7 +249,7 @@ class VertexGPUJobService:
                 
                 # Submit job asynchronously
                 logger.info(f"🚀 Submitting CustomJob: {display_name}")
-                job.submit(sync=False)  # Non-blocking submission
+                job.submit()  # Submit the job (async by default)
                 
                 logger.info(f"✅ Job submitted successfully: {job.resource_name}")
                 logger.info(f"🎯 Job resource name: {job.resource_name}")

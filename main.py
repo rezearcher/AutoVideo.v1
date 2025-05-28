@@ -1,3 +1,5 @@
+# Auto Video Generator - Cloud Native
+# Updated: 2025-05-28 - GPU compatibility fixes included
 import os
 import sys
 import logging

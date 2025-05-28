@@ -265,13 +265,15 @@ class MonitoringSetup:
 
     def create_dashboard(self, dashboard_config: Dict):
         """Create monitoring dashboard - DISABLED: DashboardServiceClient not available in monitoring_v3"""
-        print(f"⚠️  Dashboard creation skipped: '{dashboard_config['name']}' - DashboardServiceClient requires separate package")
+        print(
+            f"⚠️  Dashboard creation skipped: '{dashboard_config['name']}' - DashboardServiceClient requires separate package"
+        )
         return
-        
+
         # The following code is commented out because DashboardServiceClient is not available
         # in the google.cloud.monitoring_v3 module. It requires a separate package:
         # pip install google-cloud-monitoring-dashboards
-        
+
         # try:
         #     # Check if dashboard already exists
         #     existing_dashboards = self.dashboard_client.list_dashboards(

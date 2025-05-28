@@ -222,37 +222,28 @@ class VertexGPUJobService:
                 # Use the high-level CustomJob API
                 job = aiplatform.CustomJob(
                     display_name=display_name,
-                    worker_pool_specs=[
-                        {
-                            "machine_spec": {
-                                "machine_type": self.machine_type,
-                                "accelerator_type": self.accelerator_type,
-                                "accelerator_count": self.accelerator_count,
-                            },
-                            "replica_count": 1,
-                            "disk_spec": {
-                                "boot_disk_type": "pd-ssd",
-                                "boot_disk_size_gb": 100
-                            },
-                            "container_spec": {
-                                "image_uri": self.container_image,
-                                "args": [
-                                    "--job-id", job_id,
-                                    "--project-id", self.project_id,
-                                    "--bucket-name", self.bucket_name
-                                ],
-                                "env": [
-                                    {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
-                                ]
-                            },
-                        }
-                    ],
-                    # Enable spot VMs for cost savings and higher quota availability
-                    scheduling={
-                        "restart_job_on_worker_restart": True,
-                        "timeout": "3600s",  # 1 hour timeout
-                        "enable_spot": self.current_spot
-                    },
+                    project=self.project_id,
+                    location=self.region,
+                    worker_pool_specs=[{
+                        "machine_spec": {
+                            "machine_type": self.machine_type,
+                            "accelerator_type": self.accelerator_type,
+                            "accelerator_count": self.accelerator_count
+                        },
+                        "replica_count": 1,
+                        "container_spec": {
+                            "image_uri": self.container_image,
+                            "command": [
+                                "python", "/app/gpu_worker.py",
+                                "--job-id", job_id,
+                                "--project-id", self.project_id,
+                                "--bucket-name", self.bucket_name
+                            ],
+                            "env": [
+                                {"name": "GOOGLE_CLOUD_PROJECT", "value": self.project_id}
+                            ]
+                        },
+                    }],
                     labels=job_labels
                 )
                 

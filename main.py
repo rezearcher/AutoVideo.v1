@@ -194,7 +194,20 @@ def initialize_app():
     # Log service account at startup
     try:
         creds, project = google.auth.default()
-        sa_email = getattr(creds, 'service_account_email', 'Unknown')
+        
+        # Try to get service account email from metadata server (more reliable in Cloud Run)
+        try:
+            import requests
+            metadata_url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
+            headers = {"Metadata-Flavor": "Google"}
+            response = requests.get(metadata_url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                sa_email = response.text.strip()
+            else:
+                sa_email = getattr(creds, 'service_account_email', 'Unknown')
+        except Exception:
+            sa_email = getattr(creds, 'service_account_email', 'Unknown')
+            
         logger.info(f"🔑 Starting with service account: {sa_email}")
         logger.info(f"📍 Project: {project}")
     except Exception as e:
@@ -798,7 +811,19 @@ def health_service_account():
     """Check runtime service account and permissions"""
     try:
         creds, project = google.auth.default()
-        sa_email = getattr(creds, 'service_account_email', 'Unknown')
+        
+        # Try to get service account email from metadata server (more reliable in Cloud Run)
+        try:
+            import requests
+            metadata_url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
+            headers = {"Metadata-Flavor": "Google"}
+            response = requests.get(metadata_url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                sa_email = response.text.strip()
+            else:
+                sa_email = getattr(creds, 'service_account_email', 'Unknown')
+        except Exception:
+            sa_email = getattr(creds, 'service_account_email', 'Unknown')
         
         return jsonify({
             'status': 'healthy',
@@ -836,12 +861,25 @@ def health_vertex_minimal():
         # Just test the client creation and permissions - don't actually create a job
         parent = f"projects/{project}/locations/us-central1"
         
+        # Get service account email via metadata server for accurate reporting
+        try:
+            import requests
+            metadata_url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
+            headers = {"Metadata-Flavor": "Google"}
+            response = requests.get(metadata_url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                sa_email = response.text.strip()
+            else:
+                sa_email = getattr(creds, 'service_account_email', 'Unknown')
+        except Exception:
+            sa_email = getattr(creds, 'service_account_email', 'Unknown')
+        
         return jsonify({
             'status': 'healthy', 
             'message': 'Vertex AI client created successfully',
             'project': project,
             'parent': parent,
-            'service_account': getattr(creds, 'service_account_email', 'Unknown'),
+            'service_account': sa_email,
             'timestamp': datetime.now().isoformat()
         }), 200
         

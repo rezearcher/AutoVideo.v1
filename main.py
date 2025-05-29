@@ -1084,7 +1084,7 @@ def stage_assets_for_vm_render(image_paths, audio_path, story, output_dir):
     try:
         import json
         import uuid
-        
+
         from google.cloud import storage
 
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "av-8675309")

@@ -28,6 +28,6 @@ COPY caption_generator.py /app/
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
 
 ENTRYPOINT ["python", "gpu_worker.py"] 

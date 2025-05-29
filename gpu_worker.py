@@ -217,6 +217,8 @@ class GPUVideoProcessor:
                         "h264_nvenc",
                         "-preset",
                         "fast",
+                        "-threads",
+                        "0",
                     ],
                 )
 

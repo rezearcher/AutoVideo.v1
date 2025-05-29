@@ -90,11 +90,20 @@ def create_video(images, voiceover_path, story, timestamp, output_path):
         except Exception as e:
             raise Exception(f"Error adding audio from {voiceover_path}: {str(e)}")
 
-        # Write the initial video file
+        # Write the initial video file with NVENC hardware encoding
         logging.info(f"Writing initial video to: {output_path}")
         try:
             final_clip.write_videofile(
-                output_path, fps=24, codec="libx264", audio_codec="aac"
+                output_path,
+                fps=24,
+                codec="libx264",
+                audio_codec="aac",
+                ffmpeg_params=[
+                    "-hwaccel", "cuda",
+                    "-c:v", "h264_nvenc", 
+                    "-preset", "fast",
+                    "-threads", "0"
+                ]
             )
         except Exception as e:
             raise Exception(f"Error writing video file: {str(e)}")

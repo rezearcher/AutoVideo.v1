@@ -362,23 +362,62 @@ class GPUVideoProcessor:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="GPU Video Processing Worker")
-    parser.add_argument("--job-id", required=True, help="Job ID to process")
-    parser.add_argument("--project-id", required=True, help="GCP Project ID")
-    parser.add_argument("--bucket-name", required=True, help="GCS Bucket name")
+    """Main entry point with comprehensive exception handling"""
+    try:
+        parser = argparse.ArgumentParser(description="GPU Video Processing Worker")
+        parser.add_argument("--job-id", required=True, help="Job ID to process")
+        parser.add_argument("--project-id", required=True, help="GCP Project ID")
+        parser.add_argument("--bucket-name", required=True, help="GCS Bucket name")
+        parser.add_argument("--dry-run", action="store_true", help="Test run without processing")
 
-    args = parser.parse_args()
+        args = parser.parse_args()
 
-    logger.info(f"Starting GPU worker for job: {args.job_id}")
+        logger.info(f"🚀 Starting GPU worker for job: {args.job_id}")
+        logger.info(f"📍 Project: {args.project_id}, Bucket: {args.bucket_name}")
+        
+        # Add dry-run mode for testing
+        if args.dry_run:
+            logger.info("🧪 Dry run mode - testing dependencies only")
+            try:
+                import moviepy
+                import cv2
+                import numpy
+                import PIL
+                logger.info("✅ All Python dependencies imported successfully")
+                
+                # Test GPU availability
+                processor = GPUVideoProcessor(args.project_id, args.bucket_name)
+                if processor.check_gpu_availability():
+                    logger.info("✅ GPU detected and accessible")
+                else:
+                    logger.warning("⚠️ No GPU detected, but container startup successful")
+                
+                logger.info("🎉 Dry run completed successfully")
+                sys.exit(0)
+            except ImportError as e:
+                logger.error(f"❌ Missing Python dependency: {e}")
+                sys.exit(1)
 
-    processor = GPUVideoProcessor(args.project_id, args.bucket_name)
-    success = processor.process_job(args.job_id)
+        processor = GPUVideoProcessor(args.project_id, args.bucket_name)
+        success = processor.process_job(args.job_id)
 
-    if success:
-        logger.info("Job completed successfully")
-        sys.exit(0)
-    else:
-        logger.error("Job failed")
+        if success:
+            logger.info("🎉 Job completed successfully")
+            sys.exit(0)
+        else:
+            logger.error("❌ Job failed")
+            sys.exit(1)
+            
+    except KeyboardInterrupt:
+        logger.info("⚠️ Interrupted by user")
+        sys.exit(130)
+    except SystemExit:
+        # Re-raise SystemExit to preserve exit codes
+        raise
+    except Exception as e:
+        logger.exception(f"❌ Fatal error in GPU worker: {e}")
+        logger.error(f"❌ Exception type: {type(e).__name__}")
+        logger.error(f"❌ Full traceback above ☝️")
         sys.exit(1)
 
 

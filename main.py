@@ -801,6 +801,9 @@ def generate_video_batch():
 
     try:
         is_generating = True
+        # Clear old status and set to running
+        last_generation_status = "generating (batch mode)"
+        
         # Start timing
         timing_metrics.start_pipeline()
 
@@ -822,6 +825,7 @@ def generate_video_batch():
 
         # Generate content
         logger.info("🤖 Generating story...")
+        last_generation_status = "generating story (batch mode)"
         timing_metrics.start_phase("story_generation")
         phase_start = time.time()
         story, prompt = generate_story(story_prompt)
@@ -838,6 +842,7 @@ def generate_video_batch():
         logger.info(f"🖼️ Extracted {len(image_prompts)} image prompts")
 
         logger.info("🎨 Generating images...")
+        last_generation_status = "generating images (batch mode)"
         timing_metrics.start_phase("image_generation")
         phase_start = time.time()
         image_paths = generate_images(image_prompts, output_dir)
@@ -850,6 +855,7 @@ def generate_video_batch():
         logger.info(f"✅ Generated {len(image_paths)} images in {phase_duration:.2f}s")
 
         logger.info("🎙️ Generating voiceover...")
+        last_generation_status = "generating voiceover (batch mode)"
         timing_metrics.start_phase("voiceover_generation")
         phase_start = time.time()
         audio_path = os.path.join(output_dir, "voiceover.mp3")
@@ -863,6 +869,7 @@ def generate_video_batch():
 
         # Create video using Vertex AI GPU (cloud-native - no local fallback)
         logger.info("🎬 Creating video...")
+        last_generation_status = "creating video via Vertex AI (batch mode)"
         timing_metrics.start_phase("video_creation")
         phase_start = time.time()
         output_path = f"{output_dir}/final_video.mp4"
@@ -877,12 +884,15 @@ def generate_video_batch():
             # Debug: Log the paths being passed
             logger.info(f"📁 Image paths: {image_paths}")
             logger.info(f"🎵 Audio path: {audio_path}")
-            logger.info(f"📝 Story length: {len(story)} characters")
+            logger.info(f"�� Story length: {len(story)} characters")
 
             # Submit job to Vertex AI
             logger.info("📤 Submitting job to Vertex AI...")
             job_id = vertex_gpu_service.create_video_job(image_paths, audio_path, story)
             logger.info(f"✅ Submitted Vertex AI job: {job_id}")
+            
+            # Update status with job ID
+            last_generation_status = f"Vertex AI job running: {job_id} (batch mode)"
 
             # Wait for completion
             logger.info("⏳ Waiting for job completion...")
@@ -918,6 +928,7 @@ def generate_video_batch():
 
         # Upload to YouTube
         logger.info("📤 Uploading to YouTube...")
+        last_generation_status = "uploading to YouTube (batch mode)"
         timing_metrics.start_phase("youtube_upload")
         phase_start = time.time()
         # Extract title and description from story
@@ -977,6 +988,9 @@ def generate_video_thread():
 
     try:
         is_generating = True
+        # Clear old status and set to running
+        last_generation_status = "generating"
+        
         # Start timing
         timing_metrics.start_pipeline()
 
@@ -1033,6 +1047,9 @@ def generate_video_thread():
         phase_start = time.time()
         output_path = f"{output_dir}/final_video.mp4"
 
+        # Update status to show current phase
+        last_generation_status = "creating video via Vertex AI"
+
         # Use global Vertex AI GPU service (already initialized at startup)
         try:
             if vertex_gpu_service is None:
@@ -1049,6 +1066,9 @@ def generate_video_thread():
             logger.info("📤 Submitting job to Vertex AI...")
             job_id = vertex_gpu_service.create_video_job(image_paths, audio_path, story)
             logger.info(f"✅ Submitted Vertex AI job: {job_id}")
+
+            # Update status with job ID
+            last_generation_status = f"Vertex AI job running: {job_id}"
 
             # Wait for completion
             logger.info("⏳ Waiting for job completion...")
@@ -1084,6 +1104,9 @@ def generate_video_thread():
         # Upload to YouTube
         timing_metrics.start_phase("youtube_upload")
         phase_start = time.time()
+        # Update status
+        last_generation_status = "uploading to YouTube"
+        
         # Extract title and description from story
         story_lines = story.split("\n")
         title = story_lines[0].replace("Title: ", "")

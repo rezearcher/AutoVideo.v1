@@ -88,6 +88,9 @@ RATE_LIMIT_MAX_REQUESTS = 10  # Max requests per window
 # Application initialization flag
 app_initialized = False
 
+# Global variable for current render job
+current_render_job_id = None
+
 
 def send_custom_metric(metric_name: str, value: float, labels: dict = None):
     """Send a custom metric to Google Cloud Monitoring."""
@@ -931,19 +934,342 @@ def start_generation():
 
         # Send generation start metric
         send_custom_metric("generation_request", 1.0, {"status": "accepted"})
-        send_custom_metric("generation_started", 1.0)
-
+        send_custom_metric("generation_started", 1.0, {"trigger": "manual_api"})
+        
         # Start video generation in a background thread
         thread = threading.Thread(target=generate_video_thread)
         thread.daemon = True
         thread.start()
-
-        return jsonify({"message": "Video generation started"})
+        
+        return jsonify({"status": "started", "message": "Video generation started"})
 
     except Exception as e:
         report_error(e, "start_generation")
         send_custom_metric("generation_request", 1.0, {"status": "error"})
         return jsonify({"error": "Failed to start generation"}), 500
+
+
+@app.route("/render-fallback", methods=["POST"])
+def trigger_fast_render_fallback():
+    """
+    Trigger fast VM-based render fallback when Vertex AI is too slow
+    """
+    global last_generation_status
+    
+    try:
+        # Get video length from request or use default
+        video_length = request.json.get("video_length_s", 180) if request.json else 180
+        
+        # Update status
+        last_generation_status = "launching fast render VM"
+        
+        # Launch the fast render VM
+        logger.info("🚀 Triggering fast render fallback...")
+        
+        import subprocess
+        import os
+        
+        # Set environment variables for the script
+        env = os.environ.copy()
+        env["VIDEO_LENGTH_S"] = str(video_length)
+        
+        # Launch the fast render script
+        result = subprocess.run([
+            "python3", "scripts/launch_fast_render.py"
+        ], capture_output=True, text=True, env=env)
+        
+        if result.returncode == 0:
+            last_generation_status = "fast render VM launched successfully"
+            logger.info("✅ Fast render VM launched successfully")
+            
+            return jsonify({
+                "status": "success",
+                "message": "Fast render VM launched successfully",
+                "output": result.stdout
+            }), 200
+        else:
+            last_generation_status = f"fast render launch failed: {result.stderr}"
+            logger.error(f"❌ Fast render launch failed: {result.stderr}")
+            
+            return jsonify({
+                "status": "error", 
+                "message": "Failed to launch fast render VM",
+                "error": result.stderr
+            }), 500
+            
+    except Exception as e:
+        last_generation_status = f"fast render error: {str(e)}"
+        logger.error(f"❌ Fast render fallback error: {e}")
+        return jsonify({
+            "status": "error",
+            "message": "Fast render fallback failed", 
+            "error": str(e)
+        }), 500
+
+
+def check_vm_render_status():
+    """
+    Check status of any running render VMs
+    """
+    try:
+        import subprocess
+        
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "av-8675309")
+        
+        # List any running render VMs
+        result = subprocess.run([
+            "gcloud", "compute", "instances", "list",
+            f"--project={project_id}",
+            "--filter=name~av-render-* AND status:RUNNING",
+            "--format=json"
+        ], capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            import json
+            vms = json.loads(result.stdout)
+            return {
+                "vm_count": len(vms),
+                "vms": [{"name": vm["name"], "status": vm["status"], "zone": vm["zone"]} for vm in vms]
+            }
+        else:
+            return {"error": "Failed to check VM status", "details": result.stderr}
+            
+    except Exception as e:
+        return {"error": f"VM status check failed: {e}"}
+
+
+@app.route("/vm-status", methods=["GET"])
+def vm_status():
+    """Check status of running render VMs"""
+    try:
+        vm_info = check_vm_render_status()
+        return jsonify(vm_info), 200
+    except Exception as e:
+        return jsonify({"error": f"Failed to check VM status: {e}"}), 500
+
+
+def stage_assets_for_vm_render(image_paths, audio_path, story, output_dir):
+    """
+    Stage generated assets to Cloud Storage for VM access
+    """
+    try:
+        from google.cloud import storage
+        
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "av-8675309")
+        staging_bucket_name = f"{project_id}-staging"
+        
+        # Initialize storage client
+        storage_client = storage.Client()
+        
+        # Create bucket if it doesn't exist
+        try:
+            bucket = storage_client.bucket(staging_bucket_name)
+            bucket.reload()  # Check if bucket exists
+        except Exception:
+            logger.info(f"Creating staging bucket: {staging_bucket_name}")
+            bucket = storage_client.create_bucket(staging_bucket_name)
+        
+        # Generate unique job ID for this render
+        import uuid
+        job_id = str(uuid.uuid4())[:8]
+        
+        # Upload assets
+        logger.info(f"📦 Staging assets for job {job_id}...")
+        
+        # Upload images
+        image_urls = []
+        for i, image_path in enumerate(image_paths):
+            blob_name = f"jobs/{job_id}/images/image_{i:03d}.jpg"
+            blob = bucket.blob(blob_name)
+            blob.upload_from_filename(image_path)
+            image_urls.append(f"gs://{staging_bucket_name}/{blob_name}")
+        
+        # Upload audio
+        audio_blob_name = f"jobs/{job_id}/audio/voiceover.mp3"
+        audio_blob = bucket.blob(audio_blob_name)
+        audio_blob.upload_from_filename(audio_path)
+        audio_url = f"gs://{staging_bucket_name}/{audio_blob_name}"
+        
+        # Upload story as JSON
+        story_data = {
+            "story": story,
+            "job_id": job_id,
+            "timestamp": datetime.now().isoformat(),
+            "image_urls": image_urls,
+            "audio_url": audio_url
+        }
+        
+        story_blob_name = f"jobs/{job_id}/story.json"
+        story_blob = bucket.blob(story_blob_name)
+        story_blob.upload_from_string(json.dumps(story_data), content_type="application/json")
+        
+        # Upload job metadata
+        metadata = {
+            "job_id": job_id,
+            "assets_staged": True,
+            "image_count": len(image_paths),
+            "story_blob": f"gs://{staging_bucket_name}/{story_blob_name}",
+            "output_dir": output_dir
+        }
+        
+        metadata_blob_name = f"jobs/{job_id}/metadata.json"
+        metadata_blob = bucket.blob(metadata_blob_name)
+        metadata_blob.upload_from_string(json.dumps(metadata), content_type="application/json")
+        
+        logger.info(f"✅ Assets staged successfully for job {job_id}")
+        
+        # Store job ID globally for VM to access
+        global current_render_job_id
+        current_render_job_id = job_id
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to stage assets: {e}")
+        return False
+
+
+def launch_fast_render_vm(video_length_s=180):
+    """
+    Launch fast render VM using the existing script
+    """
+    try:
+        import subprocess
+        import os
+        
+        # Set environment variables
+        env = os.environ.copy()
+        env["VIDEO_LENGTH_S"] = str(video_length_s)
+        env["RENDER_JOB_ID"] = current_render_job_id or "unknown"
+        
+        # Launch the fast render script
+        result = subprocess.run([
+            "python3", "scripts/launch_fast_render.py"
+        ], capture_output=True, text=True, env=env)
+        
+        if result.returncode == 0:
+            # Extract VM name from output
+            output_lines = result.stdout.split('\n')
+            vm_name = None
+            for line in output_lines:
+                if "Fast render VM" in line and "is starting up" in line:
+                    # Extract VM name from: "Fast render VM 'av-render-abc123' is starting up!"
+                    vm_name = line.split("'")[1]
+                    break
+            
+            return {
+                "success": True,
+                "vm_name": vm_name or "unknown",
+                "output": result.stdout
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.stderr,
+                "output": result.stdout
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+def wait_for_vm_completion(vm_name, expected_output_path, timeout=7200):
+    """
+    Wait for VM to complete and download the result
+    """
+    try:
+        import time
+        from google.cloud import storage
+        
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "av-8675309")
+        output_bucket_name = f"{project_id}-outputs"
+        
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(output_bucket_name)
+        
+        start_time = time.time()
+        check_interval = 30  # Check every 30 seconds
+        
+        logger.info(f"⏳ Waiting for VM {vm_name} to complete (timeout: {timeout}s)...")
+        
+        while time.time() - start_time < timeout:
+            # Check if VM still exists and is running
+            vm_status = check_vm_instance_status(vm_name)
+            
+            if vm_status == "TERMINATED":
+                logger.info(f"✅ VM {vm_name} has terminated - checking for output...")
+                
+                # Look for output file in the bucket
+                # VM uploads to renders/{timestamp}-video.mp4
+                blobs = bucket.list_blobs(prefix="renders/")
+                
+                # Find most recent blob (VM should have just created it)
+                recent_blobs = []
+                cutoff_time = start_time - 300  # 5 minutes before we started waiting
+                
+                for blob in blobs:
+                    if blob.name.endswith('.mp4') and blob.time_created.timestamp() > cutoff_time:
+                        recent_blobs.append(blob)
+                
+                if recent_blobs:
+                    # Get the most recent one
+                    latest_blob = max(recent_blobs, key=lambda b: b.time_created)
+                    
+                    # Download it to expected location
+                    logger.info(f"📥 Downloading result from {latest_blob.name}...")
+                    latest_blob.download_to_filename(expected_output_path)
+                    
+                    logger.info(f"✅ Video downloaded successfully to {expected_output_path}")
+                    return expected_output_path
+                else:
+                    logger.error("❌ VM terminated but no output file found")
+                    return None
+                    
+            elif vm_status == "ERROR" or vm_status is None:
+                logger.error(f"❌ VM {vm_name} failed or not found")
+                return None
+            
+            # Still running, wait and check again
+            time.sleep(check_interval)
+            elapsed = time.time() - start_time
+            logger.info(f"⏳ VM still running... ({elapsed/60:.1f}m elapsed)")
+        
+        # Timeout reached
+        logger.error(f"❌ VM {vm_name} timed out after {timeout}s")
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ Error waiting for VM completion: {e}")
+        return None
+
+
+def check_vm_instance_status(vm_name):
+    """
+    Check the status of a specific VM instance
+    """
+    try:
+        import subprocess
+        
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "av-8675309")
+        
+        result = subprocess.run([
+            "gcloud", "compute", "instances", "describe", vm_name,
+            f"--project={project_id}",
+            "--zone=us-central1-a",
+            "--format=value(status)"
+        ], capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            return result.stdout.strip()
+        else:
+            return None
+            
+    except Exception as e:
+        logger.error(f"Failed to check VM status: {e}")
+        return None
 
 
 def generate_video_batch():
@@ -1075,10 +1401,52 @@ def generate_video_batch():
         except Exception as gpu_error:
             logger.error(f"❌ Vertex AI GPU processing failed: {gpu_error}")
             send_custom_metric("video_creation_method", 1.0, {"method": "failed"})
-            # Cloud-native design: no local fallback, fail fast with clear error
-            raise Exception(
-                f"Video creation failed - Vertex AI error: {gpu_error}. This is a cloud-native app with no local processing fallback."
-            )
+            
+            # Check if this is a timeout or failure that could benefit from fast render fallback
+            error_str = str(gpu_error).lower()
+            is_timeout = any(keyword in error_str for keyword in ['timeout', 'time', '3600', 'hour'])
+            is_quota_issue = any(keyword in error_str for keyword in ['quota', 'limit', 'exceeded'])
+            
+            if is_timeout or is_quota_issue:
+                logger.info("🚀 Vertex AI failed due to timeout/quota - attempting fast render fallback...")
+                
+                try:
+                    # Stage assets to Cloud Storage for VM access
+                    staging_success = stage_assets_for_vm_render(image_paths, audio_path, story, output_dir)
+                    
+                    if staging_success:
+                        # Launch fast render VM
+                        vm_result = launch_fast_render_vm(video_length_s=180)
+                        
+                        if vm_result.get("success"):
+                            logger.info("✅ Fast render VM launched - monitoring for completion...")
+                            last_generation_status = f"fast render VM active: {vm_result['vm_name']}"
+                            
+                            # Wait for VM completion (with reasonable timeout)
+                            vm_video_path = wait_for_vm_completion(vm_result['vm_name'], output_path, timeout=7200)  # 2 hours
+                            
+                            if vm_video_path:
+                                video_path = vm_video_path
+                                logger.info("✅ Video created successfully using fast render VM")
+                                send_custom_metric("video_creation_method", 1.0, {"method": "fast_render_vm"})
+                            else:
+                                raise Exception("Fast render VM failed to complete")
+                        else:
+                            raise Exception(f"Failed to launch fast render VM: {vm_result.get('error')}")
+                    else:
+                        raise Exception("Failed to stage assets for VM render")
+                        
+                except Exception as fallback_error:
+                    logger.error(f"❌ Fast render fallback also failed: {fallback_error}")
+                    # Cloud-native design: no local fallback, fail fast with clear error
+                    raise Exception(
+                        f"Video creation failed - Vertex AI error: {gpu_error}. Fast render fallback also failed: {fallback_error}. This is a cloud-native app with no local processing fallback."
+                    )
+            else:
+                # Cloud-native design: no local fallback, fail fast with clear error
+                raise Exception(
+                    f"Video creation failed - Vertex AI error: {gpu_error}. This is a cloud-native app with no local processing fallback."
+                )
 
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()
@@ -1251,10 +1619,52 @@ def generate_video_thread():
         except Exception as gpu_error:
             logger.error(f"❌ Vertex AI GPU processing failed: {gpu_error}")
             send_custom_metric("video_creation_method", 1.0, {"method": "failed"})
-            # Cloud-native design: no local fallback, fail fast with clear error
-            raise Exception(
-                f"Video creation failed - Vertex AI error: {gpu_error}. This is a cloud-native app with no local processing fallback."
-            )
+            
+            # Check if this is a timeout or failure that could benefit from fast render fallback
+            error_str = str(gpu_error).lower()
+            is_timeout = any(keyword in error_str for keyword in ['timeout', 'time', '3600', 'hour'])
+            is_quota_issue = any(keyword in error_str for keyword in ['quota', 'limit', 'exceeded'])
+            
+            if is_timeout or is_quota_issue:
+                logger.info("🚀 Vertex AI failed due to timeout/quota - attempting fast render fallback...")
+                
+                try:
+                    # Stage assets to Cloud Storage for VM access
+                    staging_success = stage_assets_for_vm_render(image_paths, audio_path, story, output_dir)
+                    
+                    if staging_success:
+                        # Launch fast render VM
+                        vm_result = launch_fast_render_vm(video_length_s=180)
+                        
+                        if vm_result.get("success"):
+                            logger.info("✅ Fast render VM launched - monitoring for completion...")
+                            last_generation_status = f"fast render VM active: {vm_result['vm_name']}"
+                            
+                            # Wait for VM completion (with reasonable timeout)
+                            vm_video_path = wait_for_vm_completion(vm_result['vm_name'], output_path, timeout=7200)  # 2 hours
+                            
+                            if vm_video_path:
+                                video_path = vm_video_path
+                                logger.info("✅ Video created successfully using fast render VM")
+                                send_custom_metric("video_creation_method", 1.0, {"method": "fast_render_vm"})
+                            else:
+                                raise Exception("Fast render VM failed to complete")
+                        else:
+                            raise Exception(f"Failed to launch fast render VM: {vm_result.get('error')}")
+                    else:
+                        raise Exception("Failed to stage assets for VM render")
+                        
+                except Exception as fallback_error:
+                    logger.error(f"❌ Fast render fallback also failed: {fallback_error}")
+                    # Cloud-native design: no local fallback, fail fast with clear error
+                    raise Exception(
+                        f"Video creation failed - Vertex AI error: {gpu_error}. Fast render fallback also failed: {fallback_error}. This is a cloud-native app with no local processing fallback."
+                    )
+            else:
+                # Cloud-native design: no local fallback, fail fast with clear error
+                raise Exception(
+                    f"Video creation failed - Vertex AI error: {gpu_error}. This is a cloud-native app with no local processing fallback."
+                )
 
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()

@@ -15,7 +15,7 @@ import tempfile
 from typing import Any, Dict
 
 from google.cloud import storage
-from moviepy.editor import (
+from moviepy import (
     AudioFileClip,
     ImageClip,
     concatenate_videoclips,

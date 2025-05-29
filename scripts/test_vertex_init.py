@@ -147,5 +147,7 @@ if __name__ == "__main__":
         )
         sys.exit(0)
     else:
-        logger.error("💥 Tests failed! This explains why the main application hangs.")
+        logger.error(
+            "💥 Tests failed! This explains why the main application hangs."
+        )
         sys.exit(1)

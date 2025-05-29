@@ -32,7 +32,6 @@ except ImportError as e:
 try:
     import google.cloud.logging
     from google.cloud import error_reporting
-    from google.cloud import logging as cloud_logging
     from google.cloud import monitoring_v3
 
     CLOUD_MONITORING_AVAILABLE = True
@@ -268,7 +267,9 @@ def initialize_app():
         # Validate other critical API keys
         elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
         if not elevenlabs_key:
-            logger.warning("ELEVENLABS_API_KEY is missing! Voice generation may fail.")
+            logger.warning(
+                "ELEVENLABS_API_KEY is missing! Voice generation may fail."
+            )
         else:
             logger.info(f"ELEVENLABS_API_KEY loaded (length={len(elevenlabs_key)})")
 
@@ -286,14 +287,18 @@ def initialize_app():
             vertex_gpu_service = VertexGPUJobService(project_id=project_id)
             logger.info("✅ Global VertexGPUJobService initialized successfully")
         except Exception as gpu_error:
-            logger.warning(f"⚠️ Failed to initialize VertexGPUJobService: {gpu_error}")
+            logger.warning(
+                f"⚠️ Failed to initialize VertexGPUJobService: {gpu_error}"
+            )
             logger.warning(
                 "Video generation will be unavailable, but app will continue"
             )
             vertex_gpu_service = None
 
         app_initialized = True
-        logger.info(f"Application initialized successfully with project: {project_id}")
+        logger.info(
+            f"Application initialized successfully with project: {project_id}"
+        )
         return True
     except Exception as e:
         logger.error(f"Failed to initialize application: {str(e)}", exc_info=True)
@@ -306,7 +311,9 @@ def health_check():
     try:
         # Send health check metric
         send_custom_metric("health_check", 1.0, {"status": "healthy"})
-        return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+        return jsonify(
+            {"status": "healthy", "timestamp": datetime.now().isoformat()}
+        )
     except Exception as e:
         report_error(e, "health_check")
         send_custom_metric("health_check", 0.0, {"status": "unhealthy"})
@@ -454,7 +461,9 @@ async def check_gpu_quota():
         for region in regions_to_check:
             try:
                 region_info = (
-                    compute.regions().get(project=project_id, region=region).execute()
+                    compute.regions()
+                    .get(project=project_id, region=region)
+                    .execute()
                 )
                 region_quotas = {}
 
@@ -548,7 +557,11 @@ async def check_gpu_quota():
 
         # Determine overall status
         gpu_regions_available = len(
-            set(opt["region"] for opt in available_options if opt["gpu_type"] != "CPU")
+            set(
+                opt["region"]
+                for opt in available_options
+                if opt["gpu_type"] != "CPU"
+            )
         )
         if gpu_regions_available == 0:
             overall_status = "no_gpu_quota"
@@ -653,7 +666,9 @@ def health_check_machine_types():
                 static_mapping = REGION_GPU_MACHINE_MAP.get(region, {})
 
                 # Discover dynamic mapping
-                dynamic_mapping = discover_gpu_machine_compatibility(project_id, region)
+                dynamic_mapping = discover_gpu_machine_compatibility(
+                    project_id, region
+                )
 
                 # Compare and validate
                 region_status = {
@@ -849,7 +864,9 @@ def generate_video_batch():
             "phase_duration", phase_duration, {"phase": "image_generation"}
         )
         send_custom_metric("images_generated", len(image_paths))
-        logger.info(f"✅ Generated {len(image_paths)} images in {phase_duration:.2f}s")
+        logger.info(
+            f"✅ Generated {len(image_paths)} images in {phase_duration:.2f}s"
+        )
 
         logger.info("🎙️ Generating voiceover...")
         timing_metrics.start_phase("voiceover_generation")
@@ -883,7 +900,9 @@ def generate_video_batch():
 
             # Submit job to Vertex AI
             logger.info("📤 Submitting job to Vertex AI...")
-            job_id = vertex_gpu_service.create_video_job(image_paths, audio_path, story)
+            job_id = vertex_gpu_service.create_video_job(
+                image_paths, audio_path, story
+            )
             logger.info(f"✅ Submitted Vertex AI job: {job_id}")
 
             # Wait for completion
@@ -1049,7 +1068,9 @@ def generate_video_thread():
 
             # Submit job to Vertex AI
             logger.info("📤 Submitting job to Vertex AI...")
-            job_id = vertex_gpu_service.create_video_job(image_paths, audio_path, story)
+            job_id = vertex_gpu_service.create_video_job(
+                image_paths, audio_path, story
+            )
             logger.info(f"✅ Submitted Vertex AI job: {job_id}")
 
             # Wait for completion

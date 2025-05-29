@@ -64,7 +64,9 @@ def create_video(images, voiceover_path, story, timestamp, output_path):
                 clips.append(clip)
                 logging.info(f"Created clip for image: {image_path}")
             except Exception as e:
-                raise Exception(f"Error creating clip for image {image_path}: {str(e)}")
+                raise Exception(
+                    f"Error creating clip for image {image_path}: {str(e)}"
+                )
 
         # Concatenate all clips
         logging.info("Concatenating video clips...")
@@ -106,8 +108,12 @@ def create_video(images, voiceover_path, story, timestamp, output_path):
             caption_images = create_caption_images(story)
 
             # Add captions to video
-            video_with_captions_path = output_path.replace(".mp4", "_with_captions.mp4")
-            add_captions_to_video(output_path, caption_images, video_with_captions_path)
+            video_with_captions_path = output_path.replace(
+                ".mp4", "_with_captions.mp4"
+            )
+            add_captions_to_video(
+                output_path, caption_images, video_with_captions_path
+            )
 
             # Replace the original video with the captioned version
             os.replace(video_with_captions_path, output_path)

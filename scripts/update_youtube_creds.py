@@ -44,12 +44,16 @@ def update_env_file(credentials):
         # Format from Google Cloud Console
         set_key(env_path, "YOUTUBE_CLIENT_ID", credentials["installed"]["client_id"])
         set_key(
-            env_path, "YOUTUBE_CLIENT_SECRET", credentials["installed"]["client_secret"]
+            env_path,
+            "YOUTUBE_CLIENT_SECRET",
+            credentials["installed"]["client_secret"],
         )
     else:
         # Custom format
         set_key(env_path, "YOUTUBE_CLIENT_ID", credentials.get("client_id", ""))
-        set_key(env_path, "YOUTUBE_CLIENT_SECRET", credentials.get("client_secret", ""))
+        set_key(
+            env_path, "YOUTUBE_CLIENT_SECRET", credentials.get("client_secret", "")
+        )
 
     print("Updated .env file with YouTube credentials")
 
@@ -73,7 +77,9 @@ def main():
         update_env_file(credentials)
 
         # Create backup of credentials file
-        backup_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "backups")
+        backup_dir = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "backups"
+        )
         os.makedirs(backup_dir, exist_ok=True)
         backup_path = os.path.join(backup_dir, "youtube_credentials_backup.json")
         shutil.copy2(creds_file, backup_path)

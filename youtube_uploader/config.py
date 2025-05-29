@@ -47,7 +47,9 @@ class YouTubeConfig:
             default_category=os.getenv(
                 "YOUTUBE_DEFAULT_CATEGORY", cls.default_category
             ),
-            default_privacy=os.getenv("YOUTUBE_DEFAULT_PRIVACY", cls.default_privacy),
+            default_privacy=os.getenv(
+                "YOUTUBE_DEFAULT_PRIVACY", cls.default_privacy
+            ),
         )
 
     def validate(self) -> bool:
@@ -57,7 +59,9 @@ class YouTubeConfig:
 
         # Check if client secret file exists
         client_secret_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), ".files", "client_secret.json"
+            os.path.dirname(os.path.dirname(__file__)),
+            ".files",
+            "client_secret.json",
         )
         if not os.path.exists(client_secret_path):
             print("Error: client_secret.json not found in .files directory")

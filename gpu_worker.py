@@ -12,16 +12,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-import numpy as np
 from google.cloud import storage
 from moviepy.editor import (
     AudioFileClip,
-    CompositeVideoClip,
     ImageClip,
-    VideoFileClip,
     concatenate_videoclips,
 )
 
@@ -168,7 +164,9 @@ class GPUVideoProcessor:
     ) -> bool:
         """Create video from images and audio with captions using GPU acceleration"""
         try:
-            logger.info("Creating video from images and audio with GPU acceleration...")
+            logger.info(
+                "Creating video from images and audio with GPU acceleration..."
+            )
 
             image_paths = job_data.get("image_paths", [])
             audio_path = job_data.get("audio_path")
@@ -284,7 +282,7 @@ class GPUVideoProcessor:
                 "-f",
                 "lavfi",
                 "-i",
-                f"testsrc2=duration=10:size=1920x1080:rate=30",
+                "testsrc2=duration=10:size=1920x1080:rate=30",
                 "-f",
                 "lavfi",
                 "-i",

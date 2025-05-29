@@ -162,7 +162,12 @@ def create_output_directory():
     for subdir in subdirs.values():
         os.makedirs(subdir, exist_ok=True)
 
-    return {"base": base_dir, "timestamp": timestamp, "output": output_dir, **subdirs}
+    return {
+        "base": base_dir,
+        "timestamp": timestamp,
+        "output": output_dir,
+        **subdirs,
+    }
 
 
 def get_output_paths(dirs, timestamp):
@@ -183,5 +188,7 @@ def get_output_paths(dirs, timestamp):
         "video_with_captions": os.path.join(
             dirs["video"], f"video_with_captions_{timestamp}.mp4"
         ),
-        "image_template": os.path.join(dirs["images"], f"image_{timestamp}_{{}}.png"),
+        "image_template": os.path.join(
+            dirs["images"], f"image_{timestamp}_{{}}.png"
+        ),
     }

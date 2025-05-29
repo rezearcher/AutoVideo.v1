@@ -24,7 +24,11 @@ class TokenManager:
     def __init__(self):
         self.credentials = None
         self.youtube = None
-        self.token_info = {"last_refresh": None, "refresh_count": 0, "last_error": None}
+        self.token_info = {
+            "last_refresh": None,
+            "refresh_count": 0,
+            "last_error": None,
+        }
 
         # Load credentials from environment
         self.client_id = os.getenv("YOUTUBE_CLIENT_ID")
@@ -63,9 +67,9 @@ class TokenManager:
             return True
         if self.token_info["last_error"]:
             return True
-        if self.token_info["refresh_count"] >= 50 and (now - last_refresh) < timedelta(
-            hours=24
-        ):
+        if self.token_info["refresh_count"] >= 50 and (
+            now - last_refresh
+        ) < timedelta(hours=24):
             return True
 
         return False

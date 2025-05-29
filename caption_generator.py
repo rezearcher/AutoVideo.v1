@@ -44,7 +44,9 @@ def create_caption_images(story, words_per_caption=5, font_path=None):
 
         # Verify font file exists
         if not os.path.exists(font_path):
-            logger.warning(f"Font file not found at {font_path}, trying fallback fonts")
+            logger.warning(
+                f"Font file not found at {font_path}, trying fallback fonts"
+            )
             font_path = get_default_font_path()
 
         # Split story into words and create segments
@@ -124,7 +126,9 @@ def add_captions_to_video(video_path, caption_images, output_path):
             caption_clips.append(caption_clip)
 
         # Combine video and captions
-        final_caption_clip = mpy.CompositeVideoClip(caption_clips, size=video_clip.size)
+        final_caption_clip = mpy.CompositeVideoClip(
+            caption_clips, size=video_clip.size
+        )
         final_video_clip = mpy.CompositeVideoClip(
             [
                 video_clip.set_duration(total_duration),

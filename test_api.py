@@ -9,7 +9,9 @@ def test_elevenlabs():
     try:
         set_api_key(os.getenv("ELEVENLABS_API_KEY"))
         audio = generate(
-            text="Hello, this is a test.", voice="Bella", model="eleven_monolingual_v1"
+            text="Hello, this is a test.",
+            voice="Bella",
+            model="eleven_monolingual_v1",
         )
         print("✅ ElevenLabs API test passed")
         return True

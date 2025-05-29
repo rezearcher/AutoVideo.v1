@@ -32,7 +32,9 @@ def get_openai_client():
                 pool=5.0,  # 5 seconds to get connection from pool
             ),
             limits=httpx.Limits(
-                max_keepalive_connections=5, max_connections=10, keepalive_expiry=30.0
+                max_keepalive_connections=5,
+                max_connections=10,
+                keepalive_expiry=30.0,
             ),
         )
 
@@ -169,7 +171,9 @@ def generate_story(prompt, timeout=90):
         )
 
         story = response.choices[0].message.content.strip()
-        logging.info(f"Successfully generated story (length: {len(story)} characters)")
+        logging.info(
+            f"Successfully generated story (length: {len(story)} characters)"
+        )
         return story, prompt
 
     except Exception as e:

@@ -381,8 +381,8 @@ def main():
         if args.dry_run:
             logger.info("🧪 Dry run mode - testing dependencies only")
             try:
-                import moviepy
                 import cv2
+                import moviepy
                 import numpy
                 import PIL
 

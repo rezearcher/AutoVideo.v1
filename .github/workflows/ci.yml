@@ -139,7 +139,7 @@ jobs:
     
     - name: Run integration tests
       run: |
-        python -m pytest test_vertex_gpu_compatibility.py::TestGPUCompatibilityIntegration -v
+        python -m pytest test_vertex_gpu_compatibility.py -v
       env:
         GOOGLE_CLOUD_PROJECT: ${{ env.GOOGLE_CLOUD_PROJECT }}
         RUN_INTEGRATION_TESTS: 1

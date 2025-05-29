@@ -27,22 +27,53 @@ REGION_GPU_MACHINE_MAP = {
         "CPU": "n1-standard-8",
     },
     "us-west1": {
-        "NVIDIA_L4": "g2-standard-8",
+        # L4 GPUs not available in us-west1
         "NVIDIA_TESLA_T4": "n1-standard-4",
         "CPU": "n1-standard-8",
     },
     "us-east1": {
-        "NVIDIA_L4": "g2-standard-8",
+        # L4 GPUs not available in us-east1
         "NVIDIA_TESLA_T4": "n1-standard-4",
         "CPU": "n1-standard-8",
     },
     "europe-west1": {
-        "NVIDIA_L4": "g2-standard-8",  # Will validate dynamically
+        "NVIDIA_L4": "g2-standard-8",
         "NVIDIA_TESLA_T4": "n1-standard-4",
         "CPU": "n1-standard-8",
     },
     "asia-southeast1": {
-        "NVIDIA_L4": "g2-standard-8",  # Will validate dynamically
+        "NVIDIA_L4": "g2-standard-8",
+        "NVIDIA_TESLA_T4": "n1-standard-4",
+        "CPU": "n1-standard-8",
+    },
+    # Add additional regions where L4 is available
+    "us-east4": {
+        "NVIDIA_L4": "g2-standard-8",
+        "NVIDIA_TESLA_T4": "n1-standard-4",
+        "CPU": "n1-standard-8",
+    },
+    "us-west4": {
+        "NVIDIA_L4": "g2-standard-8",
+        "NVIDIA_TESLA_T4": "n1-standard-4",
+        "CPU": "n1-standard-8",
+    },
+    "europe-west3": {
+        "NVIDIA_L4": "g2-standard-8",
+        "NVIDIA_TESLA_T4": "n1-standard-4",
+        "CPU": "n1-standard-8",
+    },
+    "europe-west4": {
+        "NVIDIA_L4": "g2-standard-8",
+        "NVIDIA_TESLA_T4": "n1-standard-4",
+        "CPU": "n1-standard-8",
+    },
+    "asia-east1": {
+        "NVIDIA_L4": "g2-standard-8",
+        "NVIDIA_TESLA_T4": "n1-standard-4",
+        "CPU": "n1-standard-8",
+    },
+    "asia-northeast1": {
+        "NVIDIA_L4": "g2-standard-8",
         "NVIDIA_TESLA_T4": "n1-standard-4",
         "CPU": "n1-standard-8",
     },
@@ -109,11 +140,19 @@ def get_multi_region_quota_status(
     """Get quota status across multiple regions for comprehensive availability check"""
     if regions is None:
         regions = [
+            # L4 + T4 regions (prioritized)
             "us-central1",
+            "europe-west1", 
+            "us-east4",
+            "us-west4",
+            "europe-west3",
+            "europe-west4",
+            "asia-east1",
+            "asia-southeast1",
+            "asia-northeast1",
+            # T4-only regions (fallback)
             "us-west1",
             "us-east1",
-            "europe-west1",
-            "asia-southeast1",
         ]
 
     gpu_types = ["L4", "T4"]
@@ -279,12 +318,21 @@ class VertexGPUJobService:
 
     def _generate_fallback_configs(self) -> List[Dict[str, Any]]:
         """Generate fallback configurations using dynamic machine type mapping"""
+        # Prioritize regions with L4 GPU availability first, then T4-only regions
         regions = [
+            # L4 + T4 regions (prioritized)
             "us-central1",
+            "europe-west1", 
+            "us-east4",
+            "us-west4",
+            "europe-west3",
+            "europe-west4",
+            "asia-east1",
+            "asia-southeast1",
+            "asia-northeast1",
+            # T4-only regions (fallback)
             "us-west1",
             "us-east1",
-            "europe-west1",
-            "asia-southeast1",
         ]
         gpu_types = ["L4", "T4"]
         configs = []
@@ -661,10 +709,19 @@ class VertexGPUJobService:
             if (
                 "quota" in error_str.lower()
                 or "resource exhausted" in error_str.lower()
+                or "machine type" in error_str.lower()
+                or "not supported" in error_str.lower()
+                or "invalid" in error_str.lower()
             ):
-                logger.warning(
-                    f"📊 Quota exhausted for {gpu_type or 'CPU'} in {region}{spot_label}"
-                )
+                if "machine type" in error_str.lower() or "not supported" in error_str.lower():
+                    logger.warning(
+                        f"🔧 Machine type incompatibility for {gpu_type or 'CPU'} in {region}{spot_label}: {error_str}"
+                    )
+                else:
+                    logger.warning(
+                        f"📊 Quota exhausted for {gpu_type or 'CPU'} in {region}{spot_label}"
+                    )
+                
                 # Remove this config from available options and try next
                 if config in self.fallback_configs:
                     self.fallback_configs.remove(config)
@@ -673,6 +730,8 @@ class VertexGPUJobService:
                         return self.create_gpu_job_with_fallback(
                             job_id, self._get_job_config_from_url(job_config_url)
                         )
+                    else:
+                        logger.error("🚨 All fallback configurations exhausted!")
 
             raise
 

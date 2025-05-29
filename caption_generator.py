@@ -1,8 +1,8 @@
 import logging
 import os
 
-import moviepy.editor as mpy
 import numpy as np
+from moviepy import VideoFileClip, ImageClip, CompositeVideoClip
 from PIL import Image, ImageDraw, ImageFont
 
 # Configure logging
@@ -101,7 +101,7 @@ def add_captions_to_video(video_path, caption_images, output_path):
     """Overlay captions onto the video."""
     try:
         # Load video
-        video_clip = mpy.VideoFileClip(video_path)
+        video_clip = VideoFileClip(video_path)
         total_duration = video_clip.duration
         num_captions = len(caption_images)
         avg_duration_per_caption = total_duration / num_captions
@@ -116,7 +116,7 @@ def add_captions_to_video(video_path, caption_images, output_path):
 
             caption_img_array = np.array(caption_img)
             caption_clip = (
-                mpy.ImageClip(caption_img_array)
+                ImageClip(caption_img_array)
                 .set_duration(end_time - start_time)
                 .set_start(start_time)
                 .set_position(("center", "bottom"))
@@ -124,8 +124,8 @@ def add_captions_to_video(video_path, caption_images, output_path):
             caption_clips.append(caption_clip)
 
         # Combine video and captions
-        final_caption_clip = mpy.CompositeVideoClip(caption_clips, size=video_clip.size)
-        final_video_clip = mpy.CompositeVideoClip(
+        final_caption_clip = CompositeVideoClip(caption_clips, size=video_clip.size)
+        final_video_clip = CompositeVideoClip(
             [
                 video_clip.set_duration(total_duration),
                 final_caption_clip.set_duration(total_duration),

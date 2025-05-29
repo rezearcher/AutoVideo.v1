@@ -164,9 +164,7 @@ class GPUVideoProcessor:
     ) -> bool:
         """Create video from images and audio with captions using GPU acceleration"""
         try:
-            logger.info(
-                "Creating video from images and audio with GPU acceleration..."
-            )
+            logger.info("Creating video from images and audio with GPU acceleration...")
 
             image_paths = job_data.get("image_paths", [])
             audio_path = job_data.get("audio_path")

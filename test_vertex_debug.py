@@ -33,9 +33,7 @@ def test_vertex_ai_initialization():
         logger.info("Step 1: Testing authentication...")
         start_time = time.time()
         credentials, project = google.auth.default()
-        logger.info(
-            f"✅ Authentication successful in {time.time() - start_time:.2f}s"
-        )
+        logger.info(f"✅ Authentication successful in {time.time() - start_time:.2f}s")
         logger.info(f"   Project: {project}")
         logger.info(f"   Credentials type: {type(credentials).__name__}")
 
@@ -45,9 +43,7 @@ def test_vertex_ai_initialization():
         aiplatform.init(
             project=project_id, location=region, staging_bucket=f"gs://{bucket_name}"
         )
-        logger.info(
-            f"✅ Vertex AI init successful in {time.time() - start_time:.2f}s"
-        )
+        logger.info(f"✅ Vertex AI init successful in {time.time() - start_time:.2f}s")
 
         # Step 3: Test JobServiceClient creation
         logger.info("Step 3: Testing JobServiceClient creation...")
@@ -55,9 +51,7 @@ def test_vertex_ai_initialization():
         job_client = gapic.JobServiceClient(
             client_options={"api_endpoint": f"{region}-aiplatform.googleapis.com"}
         )
-        logger.info(
-            f"✅ JobServiceClient created in {time.time() - start_time:.2f}s"
-        )
+        logger.info(f"✅ JobServiceClient created in {time.time() - start_time:.2f}s")
 
         # Step 4: Test Storage client
         logger.info("Step 4: Testing Storage client...")

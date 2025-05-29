@@ -172,9 +172,7 @@ def get_multi_region_quota_status(
     return quota_status
 
 
-def discover_gpu_machine_compatibility(
-    project_id: str, region: str
-) -> Dict[str, str]:
+def discover_gpu_machine_compatibility(project_id: str, region: str) -> Dict[str, str]:
     """Dynamically discover GPU and machine type compatibility for a region"""
     try:
         from google.auth import default
@@ -274,9 +272,7 @@ def get_machine_type_for_gpu(
         compatibility = discover_gpu_machine_compatibility(project_id, region)
         machine_type = compatibility.get(gpu_type)
         if machine_type:
-            logger.info(
-                f"Dynamic discovery: {gpu_type} -> {machine_type} in {region}"
-            )
+            logger.info(f"Dynamic discovery: {gpu_type} -> {machine_type} in {region}")
             # Update static mapping for future use
             if region not in REGION_GPU_MACHINE_MAP:
                 REGION_GPU_MACHINE_MAP[region] = {}
@@ -371,9 +367,7 @@ class VertexGPUJobService:
 
         # Add CPU fallbacks for all regions
         for region in regions:
-            cpu_machine_type = get_machine_type_for_gpu(
-                region, "CPU", self.project_id
-            )
+            cpu_machine_type = get_machine_type_for_gpu(region, "CPU", self.project_id)
             configs.append(
                 {
                     "region": region,
@@ -522,18 +516,14 @@ class VertexGPUJobService:
                 json.dumps(job_data, indent=2), content_type="application/json"
             )
 
-            logger.info(
-                f"✅ Uploaded job config: gs://{self.bucket_name}/{blob_name}"
-            )
+            logger.info(f"✅ Uploaded job config: gs://{self.bucket_name}/{blob_name}")
             return f"gs://{self.bucket_name}/{blob_name}"
 
         except Exception as e:
             logger.error(f"❌ Failed to upload job config: {e}")
             raise
 
-    def create_gpu_job_with_fallback(
-        self, job_id: str, config: Dict[str, Any]
-    ) -> str:
+    def create_gpu_job_with_fallback(self, job_id: str, config: Dict[str, Any]) -> str:
         """Create GPU job with intelligent fallback across regions and GPU types"""
         logger.info(f"🚀 Creating GPU job {job_id} with intelligent fallback...")
 
@@ -544,9 +534,7 @@ class VertexGPUJobService:
         # If the region differs from current, reinitialize Vertex AI
         current_region = best_config["region"]
         if current_region != self.primary_region:
-            logger.info(
-                f"🔄 Switching from {self.primary_region} to {current_region}"
-            )
+            logger.info(f"🔄 Switching from {self.primary_region} to {current_region}")
             staging_bucket = f"gs://{self.bucket_name}"
             initialize_vertex_ai(self.project_id, current_region, staging_bucket)
 
@@ -661,9 +649,7 @@ class VertexGPUJobService:
                     f"🎮 Using {gpu_count}x {gpu_type_map[gpu_type]} on {machine_type} in {region}{spot_label}"
                 )
             else:
-                logger.info(
-                    f"🖥️ Using CPU-only: {machine_type} in {region}{spot_label}"
-                )
+                logger.info(f"🖥️ Using CPU-only: {machine_type} in {region}{spot_label}")
 
             # Create and submit the CustomJob using standard high-level API
             job = aiplatform.CustomJob(

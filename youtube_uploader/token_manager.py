@@ -67,9 +67,9 @@ class TokenManager:
             return True
         if self.token_info["last_error"]:
             return True
-        if self.token_info["refresh_count"] >= 50 and (
-            now - last_refresh
-        ) < timedelta(hours=24):
+        if self.token_info["refresh_count"] >= 50 and (now - last_refresh) < timedelta(
+            hours=24
+        ):
             return True
 
         return False

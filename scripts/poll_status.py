@@ -74,9 +74,7 @@ def print_status(status_data):
     print(
         f"Generation Status: {'Generating' if status_data.get('is_generating') else 'Idle'}"
     )
-    print(
-        f"System Initialized: {'Yes' if status_data.get('is_initialized') else 'No'}"
-    )
+    print(f"System Initialized: {'Yes' if status_data.get('is_initialized') else 'No'}")
     print(
         f"Last Generation: {format_timestamp(status_data.get('last_generation_time'))}"
     )

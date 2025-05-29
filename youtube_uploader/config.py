@@ -47,9 +47,7 @@ class YouTubeConfig:
             default_category=os.getenv(
                 "YOUTUBE_DEFAULT_CATEGORY", cls.default_category
             ),
-            default_privacy=os.getenv(
-                "YOUTUBE_DEFAULT_PRIVACY", cls.default_privacy
-            ),
+            default_privacy=os.getenv("YOUTUBE_DEFAULT_PRIVACY", cls.default_privacy),
         )
 
     def validate(self) -> bool:

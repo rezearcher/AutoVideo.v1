@@ -50,10 +50,8 @@ class MonitoringSetup:
         for channel_config in channels_config:
             try:
                 # Check if channel already exists
-                existing_channels = (
-                    self.notification_client.list_notification_channels(
-                        name=self.project_name
-                    )
+                existing_channels = self.notification_client.list_notification_channels(
+                    name=self.project_name
                 )
 
                 channel_exists = False
@@ -70,9 +68,7 @@ class MonitoringSetup:
                     # Create new notification channel
                     channel = monitoring_v3.NotificationChannel(
                         type_=(
-                            f"email"
-                            if channel_config["type"] == "email"
-                            else f"slack"
+                            f"email" if channel_config["type"] == "email" else f"slack"
                         ),
                         display_name=channel_config["name"],
                         description=channel_config.get("description", ""),
@@ -133,9 +129,9 @@ class MonitoringSetup:
                                         "comparison"
                                     ],
                                 ),
-                                threshold_value=condition_config[
-                                    "condition_threshold"
-                                ]["threshold_value"],
+                                threshold_value=condition_config["condition_threshold"][
+                                    "threshold_value"
+                                ],
                                 duration={
                                     "seconds": int(
                                         condition_config["condition_threshold"][
@@ -146,9 +142,7 @@ class MonitoringSetup:
                                 aggregations=[
                                     monitoring_v3.Aggregation(
                                         alignment_period={
-                                            "seconds": int(
-                                                agg["alignment_period"][:-1]
-                                            )
+                                            "seconds": int(agg["alignment_period"][:-1])
                                         },
                                         per_series_aligner=getattr(
                                             monitoring_v3.Aggregation.Aligner,
@@ -158,13 +152,11 @@ class MonitoringSetup:
                                             monitoring_v3.Aggregation.Reducer,
                                             agg["cross_series_reducer"],
                                         ),
-                                        group_by_fields=agg.get(
-                                            "group_by_fields", []
-                                        ),
+                                        group_by_fields=agg.get("group_by_fields", []),
                                     )
-                                    for agg in condition_config[
-                                        "condition_threshold"
-                                    ]["aggregations"]
+                                    for agg in condition_config["condition_threshold"][
+                                        "aggregations"
+                                    ]
                                 ],
                             ),
                         )
@@ -252,9 +244,7 @@ class MonitoringSetup:
             try:
                 # Check if log metric already exists
                 try:
-                    existing_metric = self.logging_client.metric(
-                        metric_config["name"]
-                    )
+                    existing_metric = self.logging_client.metric(metric_config["name"])
                     if existing_metric.exists():
                         print(f"Log metric '{metric_config['name']}' already exists")
                         continue
@@ -387,9 +377,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Setup Google Cloud Monitoring for AutoVideo"
     )
-    parser.add_argument(
-        "--project-id", required=True, help="Google Cloud Project ID"
-    )
+    parser.add_argument("--project-id", required=True, help="Google Cloud Project ID")
     parser.add_argument(
         "--config",
         default="monitoring-config.yaml",

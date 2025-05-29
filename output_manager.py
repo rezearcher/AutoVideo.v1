@@ -188,7 +188,5 @@ def get_output_paths(dirs, timestamp):
         "video_with_captions": os.path.join(
             dirs["video"], f"video_with_captions_{timestamp}.mp4"
         ),
-        "image_template": os.path.join(
-            dirs["images"], f"image_{timestamp}_{{}}.png"
-        ),
+        "image_template": os.path.join(dirs["images"], f"image_{timestamp}_{{}}.png"),
     }

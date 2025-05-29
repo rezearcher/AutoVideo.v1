@@ -3,8 +3,12 @@ import os
 import textwrap
 from datetime import datetime
 
-from moviepy.editor import (AudioFileClip, ImageClip, VideoFileClip,
-                            concatenate_videoclips)
+from moviepy.editor import (
+    AudioFileClip,
+    ImageClip,
+    VideoFileClip,
+    concatenate_videoclips,
+)
 from moviepy.video.fx.all import resize
 from PIL import Image, ImageDraw, ImageFont
 

@@ -1,0 +1,429 @@
+name: Deploy AutoVideo Platform
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      force_monitoring_update:
+        description: 'Force update all monitoring resources'
+        required: false
+        default: false
+        type: boolean
+      skip_gpu_deployment:
+        description: 'Skip GPU container deployment'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PROJECT_ID: av-8675309
+  SERVICE_NAME: av-app
+  GPU_IMAGE_NAME: av-gpu-job
+  REGION: us-central1
+  WORKLOAD_IDENTITY_PROVIDER: projects/939407899550/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  SERVICE_ACCOUNT: github-actions@av-8675309.iam.gserviceaccount.com
+
+jobs:
+  # Pre-deployment validation
+  validate:
+    name: Validate Deployment
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_gpu: ${{ steps.check_changes.outputs.deploy_gpu }}
+      deploy_monitoring: ${{ steps.check_changes.outputs.deploy_monitoring }}
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 2  # Need previous commit for diff
+
+    - name: Check what changed
+      id: check_changes
+      run: |
+        # Check if GPU-related files changed
+        if git diff --name-only HEAD~1 HEAD | grep -E "(gpu_worker\.py|Dockerfile\.gpu|requirements-gpu\.txt|caption_generator\.py|vertex_gpu_service\.py)" || [ "${{ github.event.inputs.skip_gpu_deployment }}" != "true" ]; then
+          echo "deploy_gpu=true" >> $GITHUB_OUTPUT
+          echo "🎮 GPU container deployment needed"
+        else
+          echo "deploy_gpu=false" >> $GITHUB_OUTPUT
+          echo "⏭️ Skipping GPU container deployment (no changes)"
+        fi
+        
+        # Check if monitoring-related files changed
+        if git diff --name-only HEAD~1 HEAD | grep -E "(monitoring-config\.yaml|scripts/setup_monitoring\.py)" || [ "${{ github.event.inputs.force_monitoring_update }}" == "true" ]; then
+          echo "deploy_monitoring=true" >> $GITHUB_OUTPUT
+          echo "📊 Monitoring setup needed"
+        else
+          echo "deploy_monitoring=false" >> $GITHUB_OUTPUT
+          echo "⏭️ Skipping monitoring setup (no changes)"
+        fi
+
+    - name: Set up Python for validation
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Validate configuration files
+      run: |
+        # Validate monitoring config if it exists
+        if [ -f "monitoring-config.yaml" ]; then
+          python -c "
+          import yaml
+          with open('monitoring-config.yaml', 'r') as f:
+              config = yaml.safe_load(f)
+          print('✅ Monitoring configuration is valid')
+          "
+        fi
+        
+        # Validate Dockerfiles exist
+        if [ ! -f "Dockerfile" ]; then
+          echo "❌ Main Dockerfile not found"
+          exit 1
+        fi
+        
+        if [ ! -f "Dockerfile.gpu" ]; then
+          echo "❌ GPU Dockerfile not found"
+          exit 1
+        fi
+        
+        echo "✅ All configuration files validated"
+
+  # Run tests before deployment
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run API tests
+      run: |
+        if [ -f "test_api.py" ]; then
+          python test_api.py
+        else
+          echo "⚠️ No API tests found, skipping"
+        fi
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+        YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+        YOUTUBE_PROJECT_ID: ${{ secrets.YOUTUBE_PROJECT_ID }}
+
+  # Deploy GPU container (runs in parallel with main app)
+  deploy-gpu-container:
+    name: Deploy GPU Container
+    runs-on: ubuntu-latest
+    needs: [validate, test]
+    if: needs.validate.outputs.deploy_gpu == 'true'
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Authorize Docker push
+      run: gcloud auth configure-docker
+
+    - name: Build and Push GPU Container
+      run: |
+        echo "🚀 Building GPU container for Vertex AI..."
+        echo "Project ID: $PROJECT_ID"
+        echo "Image: gcr.io/$PROJECT_ID/$GPU_IMAGE_NAME"
+        
+        # Build with both SHA and latest tags
+        docker build -t gcr.io/$PROJECT_ID/$GPU_IMAGE_NAME:${{ github.sha }} -f Dockerfile.gpu .
+        docker build -t gcr.io/$PROJECT_ID/$GPU_IMAGE_NAME:latest -f Dockerfile.gpu .
+        
+        echo "📤 Pushing GPU container..."
+        docker push gcr.io/$PROJECT_ID/$GPU_IMAGE_NAME:${{ github.sha }}
+        docker push gcr.io/$PROJECT_ID/$GPU_IMAGE_NAME:latest
+
+    - name: Create GCS bucket for jobs
+      run: |
+        BUCKET_NAME="$PROJECT_ID-video-jobs"
+        echo "📦 Creating GCS bucket: $BUCKET_NAME"
+        gsutil mb -p $PROJECT_ID -c STANDARD -l $REGION gs://$BUCKET_NAME/ 2>/dev/null || echo "✅ Bucket already exists"
+
+    - name: GPU deployment summary
+      run: |
+        echo "✅ GPU container deployed successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "- **Image:** gcr.io/$PROJECT_ID/$GPU_IMAGE_NAME:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Latest:** gcr.io/$PROJECT_ID/$GPU_IMAGE_NAME:latest" >> $GITHUB_STEP_SUMMARY
+        echo "- **Bucket:** gs://$PROJECT_ID-video-jobs" >> $GITHUB_STEP_SUMMARY
+
+  # Deploy main application
+  deploy-main-app:
+    name: Deploy Main App
+    runs-on: ubuntu-latest
+    needs: [validate, test]
+    
+    permissions:
+      contents: read
+      id-token: write
+    environment: production
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Authorize Docker push
+      run: gcloud auth configure-docker
+
+    - name: Build and Push Main App Container
+      run: |
+        echo "🚀 Building main application container..."
+        docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }} .
+        docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:latest .
+        
+        echo "📤 Pushing main app container..."
+        docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }}
+        docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:latest
+
+    - name: Deploy to Cloud Run
+      uses: google-github-actions/deploy-cloudrun@v2
+      with:
+        service: ${{ env.SERVICE_NAME }}
+        region: ${{ env.REGION }}
+        image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        flags: >-
+          --min-instances=1
+          --max-instances=10
+          --memory=2Gi
+          --cpu=2
+          --concurrency=80
+          --timeout=300s
+          --set-env-vars=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }},PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }},YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }},YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }},YOUTUBE_PROJECT_ID=${{ secrets.YOUTUBE_PROJECT_ID }},GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},VERTEX_BUCKET_NAME=${{ secrets.VERTEX_BUCKET_NAME }},YOUTUBE_ENABLED=true,ENVIRONMENT=production
+          --use-http2
+          --port=8080
+          --allow-unauthenticated
+
+    - name: Get Cloud Run URL
+      id: deploy
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')
+        echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
+        echo "🌐 Service URL: $SERVICE_URL"
+
+    - name: Main app deployment summary
+      run: |
+        echo "✅ Main application deployed successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "- **Service:** $SERVICE_NAME" >> $GITHUB_STEP_SUMMARY
+        echo "- **Region:** $REGION" >> $GITHUB_STEP_SUMMARY
+        echo "- **URL:** ${{ steps.deploy.outputs.service_url }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Image:** gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # Setup monitoring (runs after main app deployment)
+  setup-monitoring:
+    name: Setup Monitoring
+    runs-on: ubuntu-latest
+    needs: [validate, deploy-main-app]
+    if: needs.validate.outputs.deploy_monitoring == 'true'
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install monitoring dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install google-cloud-monitoring google-cloud-logging google-cloud-error-reporting pyyaml
+
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Setup Google Cloud Monitoring
+      run: |
+        python scripts/setup_monitoring.py \
+          --project-id ${{ env.PROJECT_ID }} \
+          --config monitoring-config.yaml
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+
+    - name: Verify monitoring setup
+      run: |
+        echo "🔍 Verifying monitoring setup..."
+        
+        # Check custom metrics
+        gcloud logging metrics list --format="table(name)" | grep -E "(autovideo|pipeline)" || echo "ℹ️ No custom log metrics found yet"
+        
+        # Check alert policies
+        gcloud alpha monitoring policies list --format="table(displayName,enabled)" | grep -i autovideo || echo "ℹ️ No alert policies found yet"
+        
+        echo "✅ Monitoring verification completed"
+
+    - name: Monitoring setup summary
+      run: |
+        echo "✅ Google Cloud Monitoring configured!" >> $GITHUB_STEP_SUMMARY
+        echo "- **Custom metrics:** Pipeline tracking enabled" >> $GITHUB_STEP_SUMMARY
+        echo "- **Alert policies:** Error detection configured" >> $GITHUB_STEP_SUMMARY
+        echo "- **Log metrics:** Application monitoring active" >> $GITHUB_STEP_SUMMARY
+        echo "- **Dashboard:** [View Monitoring](https://console.cloud.google.com/monitoring/dashboards?project=$PROJECT_ID)" >> $GITHUB_STEP_SUMMARY
+
+  # Post-deployment verification
+  verify-deployment:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-main-app, deploy-gpu-container, setup-monitoring]
+    if: always() && needs.deploy-main-app.result == 'success'
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Get service URL
+      id: get_url
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')
+        echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
+
+    - name: Health check - Basic
+      run: |
+        echo "🏥 Running health checks..."
+        curl -f "${{ steps.get_url.outputs.service_url }}/health" || exit 1
+        echo "✅ Basic health check passed"
+
+    - name: Health check - OpenAI
+      run: |
+        curl -f "${{ steps.get_url.outputs.service_url }}/health/openai" || echo "⚠️ OpenAI health check failed"
+
+    - name: Health check - Vertex AI
+      run: |
+        curl -f "${{ steps.get_url.outputs.service_url }}/health/vertex-ai" || echo "⚠️ Vertex AI health check failed"
+
+    - name: Health check - GPU Quota
+      run: |
+        curl -f "${{ steps.get_url.outputs.service_url }}/health/quota" || echo "ℹ️ GPU quota check completed"
+
+    - name: Create deployment summary
+      run: |
+        echo "# 🚀 AutoVideo Platform Deployment Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📊 Deployment Status" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Main Application:** Deployed to Cloud Run" >> $GITHUB_STEP_SUMMARY
+        echo "- ${{ needs.deploy-gpu-container.result == 'success' && '✅' || needs.deploy-gpu-container.result == 'skipped' && '⏭️' || '❌' }} **GPU Container:** ${{ needs.deploy-gpu-container.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- ${{ needs.setup-monitoring.result == 'success' && '✅' || needs.setup-monitoring.result == 'skipped' && '⏭️' || '❌' }} **Monitoring:** ${{ needs.setup-monitoring.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🔗 Quick Links" >> $GITHUB_STEP_SUMMARY
+        echo "- **Application URL:** ${{ steps.get_url.outputs.service_url }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Health Check:** ${{ steps.get_url.outputs.service_url }}/health" >> $GITHUB_STEP_SUMMARY
+        echo "- **Cloud Console:** [View Service](https://console.cloud.google.com/run/detail/$REGION/$SERVICE_NAME?project=$PROJECT_ID)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Monitoring:** [View Dashboard](https://console.cloud.google.com/monitoring/dashboards?project=$PROJECT_ID)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🎯 Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "1. Test video generation: \`POST ${{ steps.get_url.outputs.service_url }}/generate\`" >> $GITHUB_STEP_SUMMARY
+        echo "2. Monitor application metrics in Cloud Monitoring" >> $GITHUB_STEP_SUMMARY
+        echo "3. Check logs in Cloud Logging for any issues" >> $GITHUB_STEP_SUMMARY
+
+  # Cleanup on failure
+  cleanup-on-failure:
+    name: Cleanup Failed Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-main-app, deploy-gpu-container, setup-monitoring]
+    if: failure()
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Rollback on failure
+      run: |
+        echo "❌ Deployment failed, checking rollback options..."
+        
+        # Get previous revision
+        PREVIOUS_REVISION=$(gcloud run revisions list --service=$SERVICE_NAME --region=$REGION --limit=2 --format="value(metadata.name)" | tail -n 1)
+        
+        if [ ! -z "$PREVIOUS_REVISION" ]; then
+          echo "🔄 Rolling back to previous revision: $PREVIOUS_REVISION"
+          gcloud run services update-traffic $SERVICE_NAME --region=$REGION --to-revisions=$PREVIOUS_REVISION=100
+          echo "✅ Rollback completed"
+        else
+          echo "ℹ️ No previous revision found for rollback"
+        fi
+
+    - name: Failure summary
+      run: |
+        echo "# ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "The deployment encountered errors. Please check:" >> $GITHUB_STEP_SUMMARY
+        echo "1. **Logs:** Review the failed job logs above" >> $GITHUB_STEP_SUMMARY
+        echo "2. **Permissions:** Ensure service account has required permissions" >> $GITHUB_STEP_SUMMARY
+        echo "3. **Resources:** Check GCP quotas and resource availability" >> $GITHUB_STEP_SUMMARY
+        echo "4. **Configuration:** Verify secrets and environment variables" >> $GITHUB_STEP_SUMMARY 

@@ -899,7 +899,7 @@ class VertexGPUJobService:
                 "status": "healthy",
                 "message": "Vertex AI API accessible",
                 "project_id": self.project_id,
-                "region": self.region,
+                "region": self.primary_region,
                 "test_job_name": test_job.display_name,
             }
 
@@ -909,5 +909,5 @@ class VertexGPUJobService:
                 "status": "unhealthy",
                 "error": str(e),
                 "project_id": self.project_id,
-                "region": self.region,
+                "region": self.primary_region,
             }

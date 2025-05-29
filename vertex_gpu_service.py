@@ -852,9 +852,13 @@ class VertexGPUJobService:
             return False
 
     def wait_for_job_completion(
-        self, job_id: str, timeout: int = 600
+        self, job_id: str, timeout: int = None
     ) -> Dict[str, Any]:
         """Wait for job completion with timeout"""
+        # Use environment variable or default to 1 hour (3600 seconds)
+        if timeout is None:
+            timeout = int(os.getenv("VIDEO_JOB_TIMEOUT_S", "3600"))
+        
         start_time = time.time()
 
         while time.time() - start_time < timeout:

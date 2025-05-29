@@ -886,7 +886,7 @@ def generate_video_batch():
 
             # Wait for completion
             logger.info("⏳ Waiting for job completion...")
-            result = vertex_gpu_service.wait_for_job_completion(job_id, timeout=600)
+            result = vertex_gpu_service.wait_for_job_completion(job_id)
 
             if result.get("status") == "completed":
                 # Download the result
@@ -1052,7 +1052,7 @@ def generate_video_thread():
 
             # Wait for completion
             logger.info("⏳ Waiting for job completion...")
-            result = vertex_gpu_service.wait_for_job_completion(job_id, timeout=600)
+            result = vertex_gpu_service.wait_for_job_completion(job_id)
 
             if result.get("status") == "completed":
                 # Download the result

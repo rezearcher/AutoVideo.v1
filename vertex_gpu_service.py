@@ -858,7 +858,7 @@ class VertexGPUJobService:
         # Use environment variable or default to 1 hour (3600 seconds)
         if timeout is None:
             timeout = int(os.getenv("VIDEO_JOB_TIMEOUT_S", "3600"))
-        
+
         start_time = time.time()
 
         while time.time() - start_time < timeout:

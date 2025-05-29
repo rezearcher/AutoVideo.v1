@@ -656,10 +656,12 @@ class VertexGPUJobService:
             timeout_seconds = int(os.getenv("VERTEX_JOB_TIMEOUT_S", "3600"))
             scheduling = {
                 "timeout": Duration(seconds=timeout_seconds),
-                "restart_job_on_worker_restart": False
+                "restart_job_on_worker_restart": False,
             }
 
-            logger.info(f"🕐 Configuring Vertex AI job with timeout: {timeout_seconds}s ({timeout_seconds/60:.1f} minutes)")
+            logger.info(
+                f"🕐 Configuring Vertex AI job with timeout: {timeout_seconds}s ({timeout_seconds/60:.1f} minutes)"
+            )
 
             # Create and submit the CustomJob using standard high-level API
             job = aiplatform.CustomJob(
@@ -879,7 +881,9 @@ class VertexGPUJobService:
 
             if status.get("status") in ["completed", "failed", "error"]:
                 elapsed = time.time() - start_time
-                logger.info(f"✅ Job {job_id} finished with status '{status.get('status')}' after {elapsed:.1f}s")
+                logger.info(
+                    f"✅ Job {job_id} finished with status '{status.get('status')}' after {elapsed:.1f}s"
+                )
                 return status
 
             # Wait before checking again
@@ -887,7 +891,9 @@ class VertexGPUJobService:
 
         # Timeout reached
         elapsed = time.time() - start_time
-        logger.warning(f"⏰ Job {job_id} timed out after {elapsed:.1f}s (limit: {timeout}s)")
+        logger.warning(
+            f"⏰ Job {job_id} timed out after {elapsed:.1f}s (limit: {timeout}s)"
+        )
         return {
             "status": "timeout",
             "job_id": job_id,

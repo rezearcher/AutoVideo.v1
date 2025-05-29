@@ -7,7 +7,6 @@ and launches a Compute Engine VM for video rendering when Vertex AI
 is too slow or times out.
 """
 
-import json
 import os
 import subprocess
 import sys

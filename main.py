@@ -1082,6 +1082,9 @@ def stage_assets_for_vm_render(image_paths, audio_path, story, output_dir):
     Stage generated assets to Cloud Storage for VM access
     """
     try:
+        import json
+        import uuid
+        
         from google.cloud import storage
 
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "av-8675309")
@@ -1099,8 +1102,6 @@ def stage_assets_for_vm_render(image_paths, audio_path, story, output_dir):
             bucket = storage_client.create_bucket(staging_bucket_name)
 
         # Generate unique job ID for this render
-        import uuid
-
         job_id = str(uuid.uuid4())[:8]
 
         # Upload assets

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 import google.auth
 from google.auth.transport.requests import Request
 from google.cloud import aiplatform, storage
+from google.protobuf.duration_pb2 import Duration
 
 logger = logging.getLogger(__name__)
 
@@ -651,6 +652,15 @@ class VertexGPUJobService:
             else:
                 logger.info(f"🖥️ Using CPU-only: {machine_type} in {region}{spot_label}")
 
+            # Configure job timeout - use environment variable or default to 1 hour
+            timeout_seconds = int(os.getenv("VERTEX_JOB_TIMEOUT_S", "3600"))
+            scheduling = {
+                "timeout": Duration(seconds=timeout_seconds),
+                "restart_job_on_worker_restart": False
+            }
+
+            logger.info(f"🕐 Configuring Vertex AI job with timeout: {timeout_seconds}s ({timeout_seconds/60:.1f} minutes)")
+
             # Create and submit the CustomJob using standard high-level API
             job = aiplatform.CustomJob(
                 display_name=display_name,
@@ -658,6 +668,7 @@ class VertexGPUJobService:
                 location=region,
                 worker_pool_specs=[worker_pool_spec],
                 labels=job_labels,
+                scheduling=scheduling,
             )
 
             job.submit()
@@ -667,6 +678,7 @@ class VertexGPUJobService:
             )
             logger.info(f"🎯 Resource name: {job.resource_name}")
             logger.info(f"🏷️ Labels: {job_labels}")
+            logger.info(f"⏰ Job timeout: {timeout_seconds}s")
 
             # If we switched regions, switch back to primary for future operations
             if region != self.primary_region:
@@ -855,22 +867,27 @@ class VertexGPUJobService:
         self, job_id: str, timeout: int = None
     ) -> Dict[str, Any]:
         """Wait for job completion with timeout"""
-        # Use environment variable or default to 1 hour (3600 seconds)
+        # Use same environment variable as Vertex AI job timeout for consistency
         if timeout is None:
-            timeout = int(os.getenv("VIDEO_JOB_TIMEOUT_S", "3600"))
+            timeout = int(os.getenv("VERTEX_JOB_TIMEOUT_S", "3600"))
 
         start_time = time.time()
+        logger.info(f"⏳ Waiting for job {job_id} completion (timeout: {timeout}s)")
 
         while time.time() - start_time < timeout:
             status = self.get_job_status(job_id)
 
             if status.get("status") in ["completed", "failed", "error"]:
+                elapsed = time.time() - start_time
+                logger.info(f"✅ Job {job_id} finished with status '{status.get('status')}' after {elapsed:.1f}s")
                 return status
 
             # Wait before checking again
             time.sleep(10)
 
         # Timeout reached
+        elapsed = time.time() - start_time
+        logger.warning(f"⏰ Job {job_id} timed out after {elapsed:.1f}s (limit: {timeout}s)")
         return {
             "status": "timeout",
             "job_id": job_id,

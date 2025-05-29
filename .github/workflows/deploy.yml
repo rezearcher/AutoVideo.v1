@@ -65,16 +65,16 @@ jobs:
       with:
         python-version: '3.11'
 
+    - name: Install validation dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyyaml
+
     - name: Validate configuration files
       run: |
         # Validate monitoring config if it exists
         if [ -f "monitoring-config.yaml" ]; then
-          python -c "
-          import yaml
-          with open('monitoring-config.yaml', 'r') as f:
-              config = yaml.safe_load(f)
-          print('✅ Monitoring configuration is valid')
-          "
+          python -c "import yaml; config = yaml.safe_load(open('monitoring-config.yaml', 'r')); print('✅ Monitoring configuration is valid')"
         fi
         
         # Validate Dockerfiles exist

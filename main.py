@@ -7,6 +7,7 @@ import threading
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
+from typing import Dict, Any
 
 import google.auth
 from flask import Flask, jsonify, request
@@ -719,10 +720,109 @@ def health_check_machine_types():
         )
 
 
+def get_vertex_ai_job_details(job_id: str) -> Dict[str, Any]:
+    """Get detailed status information for a Vertex AI job"""
+    try:
+        if not job_id or vertex_gpu_service is None:
+            return None
+        
+        # Extract just the job ID without prefix text
+        if "job running:" in job_id:
+            job_id = job_id.split("job running: ")[1].split(" ")[0]
+        elif "Vertex AI job running:" in job_id:
+            job_id = job_id.split("Vertex AI job running: ")[1].split(" ")[0]
+        
+        # Use gcloud CLI to get job details since it's more reliable
+        import subprocess
+        import json
+        
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "av-8675309")
+        region = "us-central1"
+        
+        # Find the actual job by display name pattern
+        cmd = [
+            "gcloud", "ai", "custom-jobs", "list",
+            f"--region={region}",
+            f"--project={project_id}",
+            f"--filter=displayName:av-video-render-{job_id}",
+            "--limit=1",
+            "--format=json"
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        
+        if result.returncode == 0 and result.stdout.strip():
+            jobs = json.loads(result.stdout)
+            if jobs:
+                job = jobs[0]
+                
+                # Parse timestamps
+                create_time = job.get("createTime", "")
+                start_time = job.get("startTime", "")
+                end_time = job.get("endTime", "")
+                
+                # Calculate duration
+                duration_info = {}
+                if create_time and start_time:
+                    create_dt = datetime.fromisoformat(create_time.replace('Z', '+00:00'))
+                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                    queue_duration = (start_dt - create_dt).total_seconds()
+                    duration_info["queue_duration"] = queue_duration
+                
+                if start_time:
+                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                    if end_time:
+                        end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                        run_duration = (end_dt - start_dt).total_seconds()
+                        duration_info["run_duration"] = run_duration
+                        duration_info["total_duration"] = queue_duration + run_duration if "queue_duration" in duration_info else run_duration
+                    else:
+                        # Still running
+                        current_time = datetime.utcnow()
+                        run_duration = (current_time - start_dt.replace(tzinfo=None)).total_seconds()
+                        duration_info["run_duration"] = run_duration
+                        if "queue_duration" in duration_info:
+                            duration_info["total_duration"] = queue_duration + run_duration
+                
+                # Extract machine type and GPU info
+                worker_pool = job.get("jobSpec", {}).get("workerPoolSpecs", [{}])[0]
+                machine_spec = worker_pool.get("machineSpec", {})
+                machine_type = machine_spec.get("machineType", "unknown")
+                accelerator_type = machine_spec.get("acceleratorType", "")
+                accelerator_count = machine_spec.get("acceleratorCount", 0)
+                
+                # Get region from labels
+                labels = job.get("labels", {})
+                region = labels.get("region", "unknown").replace("_", "-")
+                
+                return {
+                    "job_id": job_id,
+                    "display_name": job.get("displayName", ""),
+                    "state": job.get("state", "UNKNOWN"),
+                    "region": region,
+                    "machine_type": machine_type,
+                    "accelerator_type": accelerator_type,
+                    "accelerator_count": accelerator_count,
+                    "create_time": create_time,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "duration": duration_info,
+                    "resource_name": job.get("name", ""),
+                    "error": job.get("error", {}).get("message", "") if job.get("error") else None
+                }
+        
+        return None
+        
+    except Exception as e:
+        logger.warning(f"Failed to get Vertex AI job details for {job_id}: {e}")
+        return None
+
+
 @app.route("/status")
 def status():
-    """Get the current status of video generation."""
+    """Get the current status of video generation with enhanced Vertex AI job details."""
     try:
+        # Basic status data
         status_data = {
             "is_generating": is_generating,
             "is_initialized": is_initialized,
@@ -730,6 +830,44 @@ def status():
             "last_generation_status": last_generation_status,
             "timing_metrics": timing_metrics.get_metrics(),
         }
+        
+        # Add Vertex AI job details if available
+        vertex_job_details = None
+        if is_generating and last_generation_status and "job" in last_generation_status.lower():
+            vertex_job_details = get_vertex_ai_job_details(last_generation_status)
+        
+        if vertex_job_details:
+            status_data["vertex_ai_job"] = vertex_job_details
+            
+            # Enhance the status message with job state
+            job_state = vertex_job_details.get("state", "UNKNOWN")
+            job_id = vertex_job_details.get("job_id", "unknown")
+            region = vertex_job_details.get("region", "unknown")
+            machine_info = vertex_job_details.get("machine_type", "unknown")
+            
+            if vertex_job_details.get("accelerator_type"):
+                gpu_info = f"{vertex_job_details.get('accelerator_count', 1)}x {vertex_job_details.get('accelerator_type', '')}"
+                machine_info += f" + {gpu_info}"
+            
+            # Format duration info
+            duration_info = vertex_job_details.get("duration", {})
+            duration_text = ""
+            if "total_duration" in duration_info:
+                total_mins = duration_info["total_duration"] / 60
+                duration_text = f" ({total_mins:.1f}m total)"
+            elif "run_duration" in duration_info:
+                run_mins = duration_info["run_duration"] / 60
+                duration_text = f" ({run_mins:.1f}m running)"
+            elif "queue_duration" in duration_info:
+                queue_mins = duration_info["queue_duration"] / 60
+                duration_text = f" ({queue_mins:.1f}m queued)"
+            
+            # Enhanced status message
+            status_data["enhanced_status"] = f"Vertex AI {job_state}: {job_id} on {machine_info} in {region}{duration_text}"
+            
+            # Add error information if job failed
+            if vertex_job_details.get("error"):
+                status_data["error"] = vertex_job_details["error"]
 
         # Send status metrics
         send_custom_metric(
@@ -884,7 +1022,7 @@ def generate_video_batch():
             # Debug: Log the paths being passed
             logger.info(f"📁 Image paths: {image_paths}")
             logger.info(f"🎵 Audio path: {audio_path}")
-            logger.info(f"�� Story length: {len(story)} characters")
+            logger.info(f"📝 Story length: {len(story)} characters")
 
             # Submit job to Vertex AI
             logger.info("📤 Submitting job to Vertex AI...")

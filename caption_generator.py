@@ -139,11 +139,15 @@ def add_captions_to_video(video_path, caption_images, output_path):
             fps=24,
             audio_codec="aac",
             ffmpeg_params=[
-                "-hwaccel", "cuda",
-                "-c:v", "h264_nvenc",
-                "-preset", "fast",
-                "-threads", "0"
-            ]
+                "-hwaccel",
+                "cuda",
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                "fast",
+                "-threads",
+                "0",
+            ],
         )
 
         # Clean up

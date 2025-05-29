@@ -99,11 +99,15 @@ def create_video(images, voiceover_path, story, timestamp, output_path):
                 codec="libx264",
                 audio_codec="aac",
                 ffmpeg_params=[
-                    "-hwaccel", "cuda",
-                    "-c:v", "h264_nvenc", 
-                    "-preset", "fast",
-                    "-threads", "0"
-                ]
+                    "-hwaccel",
+                    "cuda",
+                    "-c:v",
+                    "h264_nvenc",
+                    "-preset",
+                    "fast",
+                    "-threads",
+                    "0",
+                ],
             )
         except Exception as e:
             raise Exception(f"Error writing video file: {str(e)}")

@@ -27,6 +27,7 @@ cloud-storage-config.yaml
 *.md
 !README.md
 !SECURITY.md
+!MONITORING.md
 !docs/*.md
 
 # Local monitoring and management app (not for deployment)

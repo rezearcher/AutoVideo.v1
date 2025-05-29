@@ -2,7 +2,7 @@ import logging
 import os
 
 import numpy as np
-from moviepy import VideoFileClip, ImageClip, CompositeVideoClip
+from moviepy import CompositeVideoClip, ImageClip, VideoFileClip
 from PIL import Image, ImageDraw, ImageFont
 
 # Configure logging

@@ -28,3 +28,12 @@ cloud-storage-config.yaml
 !README.md
 !SECURITY.md
 !docs/*.md
+
+# Local monitoring and management app (not for deployment)
+monitor/
+management/
+mgmt/
+local_monitor*
+dashboard*
+status_monitor*
+avmonitor

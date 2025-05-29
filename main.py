@@ -31,8 +31,7 @@ except ImportError as e:
 # Google Cloud Monitoring imports
 try:
     import google.cloud.logging
-    from google.cloud import error_reporting
-    from google.cloud import monitoring_v3
+    from google.cloud import error_reporting, monitoring_v3
 
     CLOUD_MONITORING_AVAILABLE = True
 except ImportError:

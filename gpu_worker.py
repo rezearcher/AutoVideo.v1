@@ -368,13 +368,15 @@ def main():
         parser.add_argument("--job-id", required=True, help="Job ID to process")
         parser.add_argument("--project-id", required=True, help="GCP Project ID")
         parser.add_argument("--bucket-name", required=True, help="GCS Bucket name")
-        parser.add_argument("--dry-run", action="store_true", help="Test run without processing")
+        parser.add_argument(
+            "--dry-run", action="store_true", help="Test run without processing"
+        )
 
         args = parser.parse_args()
 
         logger.info(f"🚀 Starting GPU worker for job: {args.job_id}")
         logger.info(f"📍 Project: {args.project_id}, Bucket: {args.bucket_name}")
-        
+
         # Add dry-run mode for testing
         if args.dry_run:
             logger.info("🧪 Dry run mode - testing dependencies only")
@@ -383,15 +385,18 @@ def main():
                 import cv2
                 import numpy
                 import PIL
+
                 logger.info("✅ All Python dependencies imported successfully")
-                
+
                 # Test GPU availability
                 processor = GPUVideoProcessor(args.project_id, args.bucket_name)
                 if processor.check_gpu_availability():
                     logger.info("✅ GPU detected and accessible")
                 else:
-                    logger.warning("⚠️ No GPU detected, but container startup successful")
-                
+                    logger.warning(
+                        "⚠️ No GPU detected, but container startup successful"
+                    )
+
                 logger.info("🎉 Dry run completed successfully")
                 sys.exit(0)
             except ImportError as e:
@@ -407,7 +412,7 @@ def main():
         else:
             logger.error("❌ Job failed")
             sys.exit(1)
-            
+
     except KeyboardInterrupt:
         logger.info("⚠️ Interrupted by user")
         sys.exit(130)

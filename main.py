@@ -803,7 +803,7 @@ def generate_video_batch():
         is_generating = True
         # Clear old status and set to running
         last_generation_status = "generating (batch mode)"
-        
+
         # Start timing
         timing_metrics.start_pipeline()
 
@@ -890,7 +890,7 @@ def generate_video_batch():
             logger.info("📤 Submitting job to Vertex AI...")
             job_id = vertex_gpu_service.create_video_job(image_paths, audio_path, story)
             logger.info(f"✅ Submitted Vertex AI job: {job_id}")
-            
+
             # Update status with job ID
             last_generation_status = f"Vertex AI job running: {job_id} (batch mode)"
 
@@ -990,7 +990,7 @@ def generate_video_thread():
         is_generating = True
         # Clear old status and set to running
         last_generation_status = "generating"
-        
+
         # Start timing
         timing_metrics.start_pipeline()
 
@@ -1106,7 +1106,7 @@ def generate_video_thread():
         phase_start = time.time()
         # Update status
         last_generation_status = "uploading to YouTube"
-        
+
         # Extract title and description from story
         story_lines = story.split("\n")
         title = story_lines[0].replace("Title: ", "")

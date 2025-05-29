@@ -355,7 +355,6 @@ def openai_health_check():
 @app.route("/health/vertex-ai")
 def health_check_vertex_ai():
     """Test Vertex AI connectivity through global GPU service"""
-    global vertex_gpu_service
 
     try:
         if vertex_gpu_service is None:
@@ -618,8 +617,6 @@ async def check_gpu_quota():
 def health_check_machine_types():
     """Validate GPU machine type mappings across regions"""
     try:
-        global vertex_gpu_service
-
         if vertex_gpu_service is None:
             return (
                 jsonify(
@@ -755,7 +752,6 @@ def status():
 @app.route("/generate", methods=["POST"])
 def start_generation():
     """Start the video generation process."""
-    global is_generating
 
     try:
         if is_generating:
@@ -875,8 +871,6 @@ def generate_video_batch():
 
         # Use global Vertex AI GPU service (already initialized at startup)
         try:
-            global vertex_gpu_service
-
             if vertex_gpu_service is None:
                 raise Exception("VertexGPUJobService not initialized at startup")
 
@@ -1043,8 +1037,6 @@ def generate_video_thread():
 
         # Use global Vertex AI GPU service (already initialized at startup)
         try:
-            global vertex_gpu_service
-
             if vertex_gpu_service is None:
                 raise Exception("VertexGPUJobService not initialized at startup")
 

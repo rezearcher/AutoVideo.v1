@@ -15,37 +15,42 @@ logger = logging.getLogger(__name__)
 
 class VoiceoverError(Exception):
     """Base exception for voiceover generation errors"""
+
     pass
 
 
 class ElevenLabsQuotaError(VoiceoverError):
     """Raised when ElevenLabs quota is exceeded"""
+
     pass
 
 
 class ElevenLabsAPIError(VoiceoverError):
     """Raised when ElevenLabs API encounters an error"""
+
     pass
 
 
-def generate_google_tts(text: str, output_path: str, voice_name: str = "en-US-Studio-O") -> str:
+def generate_google_tts(
+    text: str, output_path: str, voice_name: str = "en-US-Studio-O"
+) -> str:
     """
     Generate voiceover using Google Cloud Text-to-Speech.
-    
+
     Args:
         text (str): The text to convert to speech
         output_path (str): Path where the voiceover should be saved
         voice_name (str): Google TTS voice name to use
-        
+
     Returns:
         str: Path to the saved voiceover file
-        
+
     Raises:
         VoiceoverError: If TTS generation fails
     """
     try:
         logger.info("🔄 Generating voiceover using Google Cloud Text-to-Speech...")
-        
+
         # Initialize the Text-to-Speech client
         client = texttospeech.TextToSpeechClient()
 
@@ -83,7 +88,9 @@ def generate_google_tts(text: str, output_path: str, voice_name: str = "en-US-St
             logger.info(f"✅ Google TTS voiceover saved successfully to: {output_path}")
             return output_path
         else:
-            raise VoiceoverError("Google TTS voiceover file was not created or is empty")
+            raise VoiceoverError(
+                "Google TTS voiceover file was not created or is empty"
+            )
 
     except Exception as e:
         logger.error(f"❌ Google Cloud TTS failed: {str(e)}")
@@ -93,14 +100,14 @@ def generate_google_tts(text: str, output_path: str, voice_name: str = "en-US-St
 def generate_elevenlabs_tts(text: str, output_path: str) -> str:
     """
     Generate voiceover using ElevenLabs API.
-    
+
     Args:
         text (str): The text to convert to speech
         output_path (str): Path where the voiceover should be saved
-        
+
     Returns:
         str: Path to the saved voiceover file
-        
+
     Raises:
         ElevenLabsQuotaError: If quota is exceeded
         ElevenLabsAPIError: If API encounters other errors
@@ -144,29 +151,43 @@ def generate_elevenlabs_tts(text: str, output_path: str) -> str:
 
                 # Verify the file was created and has content
                 if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                    logger.info(f"✅ ElevenLabs voiceover saved successfully to: {output_path}")
+                    logger.info(
+                        f"✅ ElevenLabs voiceover saved successfully to: {output_path}"
+                    )
                     return output_path
                 else:
-                    raise ElevenLabsAPIError("ElevenLabs voiceover file was not created or is empty")
-                    
+                    raise ElevenLabsAPIError(
+                        "ElevenLabs voiceover file was not created or is empty"
+                    )
+
             elif response.status_code == 429:  # Rate limit exceeded
                 raise ElevenLabsQuotaError("ElevenLabs rate limit exceeded")
-            elif response.status_code in [402, 403]:  # Payment required or forbidden (quota)
-                raise ElevenLabsQuotaError("ElevenLabs quota exceeded or payment required")
+            elif response.status_code in [
+                402,
+                403,
+            ]:  # Payment required or forbidden (quota)
+                raise ElevenLabsQuotaError(
+                    "ElevenLabs quota exceeded or payment required"
+                )
             else:
                 error_msg = f"ElevenLabs API error {response.status_code}"
                 try:
                     error_details = response.json()
                     error_msg += f": {error_details}"
-                    
+
                     # Check for quota-related messages in the response
                     error_text = str(error_details).lower()
-                    if any(keyword in error_text for keyword in ["quota", "limit", "exceeded", "insufficient"]):
-                        raise ElevenLabsQuotaError(f"ElevenLabs quota issue: {error_details}")
-                        
+                    if any(
+                        keyword in error_text
+                        for keyword in ["quota", "limit", "exceeded", "insufficient"]
+                    ):
+                        raise ElevenLabsQuotaError(
+                            f"ElevenLabs quota issue: {error_details}"
+                        )
+
                 except:
                     error_msg += f": {response.text}"
-                    
+
                 raise ElevenLabsAPIError(error_msg)
 
         except ElevenLabsQuotaError:
@@ -176,11 +197,17 @@ def generate_elevenlabs_tts(text: str, output_path: str) -> str:
             retry_count += 1
             if retry_count >= max_retries:
                 if "timeout" in str(e).lower():
-                    raise ElevenLabsAPIError(f"ElevenLabs API timeout after {max_retries} attempts")
+                    raise ElevenLabsAPIError(
+                        f"ElevenLabs API timeout after {max_retries} attempts"
+                    )
                 else:
-                    raise ElevenLabsAPIError(f"ElevenLabs API failed after {max_retries} attempts: {str(e)}")
-            
-            logger.warning(f"⚠️ ElevenLabs attempt {retry_count} failed, retrying in {retry_delay * retry_count}s...")
+                    raise ElevenLabsAPIError(
+                        f"ElevenLabs API failed after {max_retries} attempts: {str(e)}"
+                    )
+
+            logger.warning(
+                f"⚠️ ElevenLabs attempt {retry_count} failed, retrying in {retry_delay * retry_count}s..."
+            )
             time.sleep(retry_delay * retry_count)  # Exponential backoff
 
 
@@ -194,7 +221,7 @@ def generate_voiceover(story: str, output_path: str) -> str:
 
     Returns:
         str: Path to the saved voiceover file
-        
+
     Raises:
         VoiceoverError: If both ElevenLabs and Google TTS fail
     """
@@ -204,7 +231,7 @@ def generate_voiceover(story: str, output_path: str) -> str:
     except ElevenLabsQuotaError as e:
         logger.warning(f"⚠️ ElevenLabs quota exceeded: {str(e)}")
         logger.info("🔄 Falling back to Google Cloud Text-to-Speech...")
-        
+
         # Use Google TTS as fallback
         try:
             return generate_google_tts(story, output_path)
@@ -218,7 +245,7 @@ def generate_voiceover(story: str, output_path: str) -> str:
         # For other ElevenLabs errors, still try Google TTS but log differently
         logger.warning(f"⚠️ ElevenLabs API error: {str(e)}")
         logger.info("🔄 Falling back to Google Cloud Text-to-Speech...")
-        
+
         try:
             return generate_google_tts(story, output_path)
         except Exception as fallback_error:

@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 # Add current directory to path to import voiceover_generator
-sys.path.insert(0, '.')
+sys.path.insert(0, ".")
 
 from voiceover_generator import (
     generate_voiceover,
@@ -18,7 +18,7 @@ from voiceover_generator import (
     generate_google_tts,
     ElevenLabsQuotaError,
     ElevenLabsAPIError,
-    VoiceoverError
+    VoiceoverError,
 )
 
 def test_google_tts():

@@ -11,9 +11,12 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 import google.auth
-from google.auth.transport.requests import Request
-from google.cloud import aiplatform, storage
-from google.protobuf.duration_pb2 import Duration
+import google.cloud.storage as storage
+from google.cloud import aiplatform
+from google.cloud.aiplatform_v1 import JobServiceClient
+from google.cloud.aiplatform_v1.types import (
+    GetCustomJobRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -654,10 +657,6 @@ class VertexGPUJobService:
 
             # Configure job timeout - use environment variable or default to 1 hour
             timeout_seconds = int(os.getenv("VERTEX_JOB_TIMEOUT_S", "3600"))
-            scheduling = {
-                "timeout": Duration(seconds=timeout_seconds),
-                "restart_job_on_worker_restart": False,
-            }
 
             logger.info(
                 f"🕐 Configuring Vertex AI job with timeout: {timeout_seconds}s ({timeout_seconds/60:.1f} minutes)"
@@ -670,10 +669,10 @@ class VertexGPUJobService:
                 location=region,
                 worker_pool_specs=[worker_pool_spec],
                 labels=job_labels,
-                scheduling=scheduling,
             )
 
-            job.submit()
+            # Submit job with timeout configuration
+            job.submit(timeout=timeout_seconds)
 
             logger.info(
                 f"✅ Job submitted successfully to {region}: {job.resource_name}"

@@ -13,12 +13,12 @@ from pathlib import Path
 sys.path.insert(0, ".")
 
 from voiceover_generator import (
-    generate_voiceover,
+    ElevenLabsAPIError,
+    ElevenLabsQuotaError,
+    VoiceoverError,
     generate_elevenlabs_tts,
     generate_google_tts,
-    ElevenLabsQuotaError,
-    ElevenLabsAPIError,
-    VoiceoverError,
+    generate_voiceover,
 )
 
 

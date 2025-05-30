@@ -17,10 +17,13 @@ try:
         generate_google_tts,
         generate_voiceover,
     )
+
     VOICEOVER_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️ Voiceover generator import failed: {e}")
-    print("💡 This might be due to missing dependencies (elevenlabs, google-cloud-texttospeech)")
+    print(
+        "💡 This might be due to missing dependencies (elevenlabs, google-cloud-texttospeech)"
+    )
     VOICEOVER_AVAILABLE = False
 
 
@@ -29,7 +32,7 @@ def test_elevenlabs():
     if not VOICEOVER_AVAILABLE:
         print("⚠️ Voiceover generator not available, skipping ElevenLabs test")
         return "skipped"
-        
+
     try:
         if not os.getenv("ELEVENLABS_API_KEY"):
             print("⚠️ ELEVENLABS_API_KEY not set, skipping ElevenLabs test")
@@ -74,7 +77,7 @@ def test_google_tts():
     if not VOICEOVER_AVAILABLE:
         print("⚠️ Voiceover generator not available, skipping Google TTS test")
         return "skipped"
-        
+
     try:
         # Test with minimal text to keep costs low
         test_text = "Test."
@@ -107,7 +110,7 @@ def test_tts_fallback():
     if not VOICEOVER_AVAILABLE:
         print("⚠️ Voiceover generator not available, skipping fallback test")
         return "skipped"
-        
+
     try:
         test_text = "Fallback test."
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
@@ -164,7 +167,9 @@ def main():
 
     if not VOICEOVER_AVAILABLE:
         print("⚠️ TTS dependencies not available in this environment")
-        print("💡 This is normal for CI environments without all dependencies installed")
+        print(
+            "💡 This is normal for CI environments without all dependencies installed"
+        )
         print("✅ Assuming TTS services will work in production environment\n")
 
     # Test individual TTS services
@@ -182,7 +187,7 @@ def main():
 
     # Analyze results
     print("\n📊 Test Results Summary:")
-    
+
     # ElevenLabs status
     if elevenlabs_result is True:
         print("  ElevenLabs TTS: ✅ WORKING")
@@ -200,7 +205,7 @@ def main():
         print("  Google Cloud TTS: ⚠️ SKIPPED")
     else:
         print("  Google Cloud TTS: ❌ FAILED")
-    
+
     # Fallback mechanism status
     if fallback_result is True:
         print("  TTS Fallback: ✅ WORKING")
@@ -208,7 +213,7 @@ def main():
         print("  TTS Fallback: ⚠️ SKIPPED")
     else:
         print("  TTS Fallback: ❌ FAILED")
-    
+
     # YouTube status
     print(f"  YouTube API: {'✅ WORKING' if youtube_result else '❌ FAILED'}")
 
@@ -217,13 +222,15 @@ def main():
     if not VOICEOVER_AVAILABLE:
         tts_working = True  # Assume TTS will work in production
         print(f"\n🎯 Critical Services Status:")
-        print(f"  TTS Services: ✅ ASSUMED WORKING (dependencies not available for testing)")
+        print(
+            f"  TTS Services: ✅ ASSUMED WORKING (dependencies not available for testing)"
+        )
     else:
         # Critical: At least one TTS service must work (preferably fallback mechanism)
         tts_working = fallback_result or google_tts_result or elevenlabs_result is True
         print(f"\n🎯 Critical Services Status:")
         print(f"  TTS Services: {'✅ OPERATIONAL' if tts_working else '❌ FAILED'}")
-    
+
     youtube_working = youtube_result
     print(f"  YouTube API: {'✅ OPERATIONAL' if youtube_working else '❌ FAILED'}")
 
@@ -232,7 +239,9 @@ def main():
         print("\n🎉 All critical APIs are operational!")
         print("💡 Video generation pipeline is ready for production")
         if elevenlabs_result == "quota_exceeded":
-            print("🔄 Note: ElevenLabs quota exceeded, but Google TTS fallback is active")
+            print(
+                "🔄 Note: ElevenLabs quota exceeded, but Google TTS fallback is active"
+            )
         elif elevenlabs_result == "skipped":
             print("🔄 Note: ElevenLabs not configured, using Google TTS")
         elif not elevenlabs_result and VOICEOVER_AVAILABLE:

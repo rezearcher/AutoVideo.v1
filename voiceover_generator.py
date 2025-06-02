@@ -61,7 +61,7 @@ def generate_google_tts(
         voice = texttospeech.VoiceSelectionParams(
             language_code="en-US",
             name=voice_name,
-            ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL,
+            ssml_gender=texttospeech.SsmlVoiceGender.FEMALE,
         )
 
         # Select the type of audio file you want returned

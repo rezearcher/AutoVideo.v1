@@ -6,9 +6,9 @@ This script shows how to modify vertex_gpu_service.py to force CPU-only mode
 as a temporary workaround while waiting for GPU quota approval.
 """
 
-import sys
-import re
 import os
+import re
+import sys
 from datetime import datetime
 
 

@@ -8,7 +8,7 @@ automatically handling retries when instances are preempted by GCP.
 
 import logging
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from vertex_gpu_service import VertexGPUJobService
 
@@ -255,6 +255,7 @@ class PreemptibleGPUManager:
 # Example usage
 if __name__ == "__main__":
     import os
+
     from dotenv import load_dotenv
 
     load_dotenv()

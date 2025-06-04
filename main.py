@@ -2227,6 +2227,48 @@ def test_tts_services():
     return jsonify(test_results)
 
 
+@app.route("/health/tts/google", methods=["GET"])
+def test_google_tts():
+    """
+    A lightweight sanity check of Google TTS:
+    - Attempts to synthesize "OK" and returns success/failure.
+    """
+    try:
+        from google.cloud import texttospeech
+        
+        client = texttospeech.TextToSpeechClient()
+        synthesis_input = texttospeech.SynthesisInput(text="OK")
+        voice = texttospeech.VoiceSelectionParams(
+            language_code="en-US",
+            ssml_gender=texttospeech.SsmlVoiceGender.FEMALE,
+        )
+        audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
+        response = client.synthesize_speech(
+            input=synthesis_input, voice=voice, audio_config=audio_config
+        )
+        
+        # If we got bytes back, consider it successful.
+        if len(response.audio_content) > 0:
+            return jsonify({
+                "status": "gcp-tts-ok",
+                "bytes_generated": len(response.audio_content),
+                "timestamp": datetime.now().isoformat()
+            }), 200
+        else:
+            return jsonify({
+                "status": "empty-response",
+                "error": "Google TTS returned empty audio content"
+            }), 500
+    except Exception as exc:
+        logger.error(f"Google TTS test failed: {exc}", exc_info=True)
+        return jsonify({
+            "status": "gcp-tts-error",
+            "exception": str(exc),
+            "exception_type": type(exc).__name__,
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+
 # Initialize the application
 try:
     is_initialized = initialize_app()

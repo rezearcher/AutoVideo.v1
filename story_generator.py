@@ -153,7 +153,7 @@ def generate_story(prompt, timeout=90, max_length=None):
     logging.info(f"Story generation timeout set to {timeout} seconds")
     if max_length:
         logging.info(f"Maximum story length set to {max_length} tokens")
-    
+
     # Default to 500 tokens if max_length is not specified
     tokens = max_length if max_length else 500
 

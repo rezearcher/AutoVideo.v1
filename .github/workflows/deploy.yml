@@ -138,6 +138,14 @@ jobs:
         YOUTUBE_PROJECT_ID: ${{ secrets.YOUTUBE_PROJECT_ID }}
         GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
 
+    - name: Run TTS fallback tests
+      run: |
+        python test_tts_fallback.py
+      env:
+        PYTHONPATH: .
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+
   # Deploy GPU container (runs in parallel with main app)
   deploy-gpu-container:
     name: Deploy GPU Container

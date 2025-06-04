@@ -10,6 +10,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     
+    permissions:
+      contents: read
+      id-token: write
+    
+    env:
+      WORKLOAD_IDENTITY_PROVIDER: projects/939407899550/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+      SERVICE_ACCOUNT: github-actions@av-8675309.iam.gserviceaccount.com
+    
     steps:
     - uses: actions/checkout@v4
     
@@ -32,6 +40,16 @@ jobs:
         pip install -r requirements.txt
         pip install pytest pytest-cov pytest-mock
     
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+    
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+    
     - name: Run GPU compatibility unit tests
       run: |
         python -m pytest test_vertex_gpu_compatibility.py -v --tb=short
@@ -43,6 +61,14 @@ jobs:
         python -m pytest test_vertex_gpu_compatibility.py --cov=vertex_gpu_service --cov-report=xml --cov-report=term-missing
       env:
         PYTHONPATH: .
+    
+    - name: Run TTS fallback tests
+      run: |
+        python test_tts_fallback.py
+      env:
+        PYTHONPATH: .
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3

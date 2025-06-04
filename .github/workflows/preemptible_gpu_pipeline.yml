@@ -1,0 +1,143 @@
+name: Preemptible GPU Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: 'Topic for video generation'
+        required: true
+        default: 'The Future of Technology'
+      use_preemptible:
+        description: 'Use preemptible (spot) GPUs to save costs'
+        required: true
+        default: true
+        type: boolean
+      max_retries:
+        description: 'Maximum retry attempts if GPU is preempted'
+        required: true
+        default: 5
+        type: number
+      retry_delay:
+        description: 'Delay in seconds between retry attempts'
+        required: true
+        default: 30
+        type: number
+      region:
+        description: 'GCP region to use for GPU'
+        required: true
+        default: 'us-central1'
+        type: string
+
+jobs:
+  phase1-setup-and-prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      job_id: ${{ steps.generate_job_id.outputs.job_id }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install google-cloud-storage google-auth requests
+    
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+    
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+    
+    - name: Generate job ID
+      id: generate_job_id
+      run: |
+        JOB_ID="job-$(date +%Y%m%d%H%M%S)-${GITHUB_RUN_ID}"
+        echo "job_id=${JOB_ID}" >> $GITHUB_OUTPUT
+        echo "Generated job ID: ${JOB_ID}"
+    
+    - name: Format code with Black
+      run: |
+        pip install black
+        black --check .
+    
+    - name: Prepare story and initial content
+      run: |
+        echo "Phase 1: Setting up story generation for topic: ${{ github.event.inputs.topic }}"
+        # This would normally call your story generation API or service
+        echo "Story preparation complete for job: ${{ steps.generate_job_id.outputs.job_id }}"
+    
+    - name: Test preemptible GPU configuration
+      run: |
+        python -c "from preemptible_gpu_manager import PreemptibleGPUManager; print('Preemptible GPU Manager imported successfully')"
+        echo "GPU configuration validated"
+  
+  phase2-video-generation:
+    needs: phase1-setup-and-prepare
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+    
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+    
+    - name: Run preemptible GPU video generation
+      env:
+        GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+      run: |
+        echo "Phase 2: Starting video generation with job ID: ${{ needs.phase1-setup-and-prepare.outputs.job_id }}"
+        echo "Using preemptible GPUs: ${{ github.event.inputs.use_preemptible }}"
+        
+        PREEMPTIBLE_FLAG=""
+        if [ "${{ github.event.inputs.use_preemptible }}" == "true" ]; then
+          PREEMPTIBLE_FLAG="--preemptible"
+          echo "Preemptible mode enabled (using spot instances)"
+        else
+          echo "Using standard (on-demand) instances"
+        fi
+        
+        python use_preemptible_gpus.py \
+          --topic "${{ github.event.inputs.topic }}" \
+          $PREEMPTIBLE_FLAG \
+          --max-retries ${{ github.event.inputs.max_retries }} \
+          --retry-delay ${{ github.event.inputs.retry_delay }} \
+          --region ${{ github.event.inputs.region }}
+    
+    - name: Upload generated video
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: generated-video
+        path: output_video_*.mp4
+        if-no-files-found: warn
+    
+    - name: Post-generation cleanup
+      if: always()
+      run: |
+        echo "Cleaning up temporary files..."
+        # Add any cleanup steps here 

@@ -1717,6 +1717,12 @@ def generate_video_thread(tts_service="elevenlabs", topic=None, max_length=None)
                 logger.info(
                     f"✅ Voiceover generation completed in {phase_duration:.2f}s"
                 )
+
+                # Update status to show successful voiceover generation
+                if tts_service.lower() == "google":
+                    last_generation_status = "voiceover generated using Google TTS"
+                else:
+                    last_generation_status = "voiceover generated successfully"
             else:
                 # File doesn't exist or is empty, which should never happen if generate_voiceover succeeded
                 logger.error(
@@ -1741,6 +1747,11 @@ def generate_video_thread(tts_service="elevenlabs", topic=None, max_length=None)
                 logger.info(
                     f"✅ Voiceover generation recovered in {phase_duration:.2f}s"
                 )
+
+                # Update status to show successful fallback
+                last_generation_status = "voiceover generated using Google TTS fallback"
+
+                # Continue with processing - do not re-raise the exception
             else:
                 # If the file really doesn't exist, then we have a true failure
                 phase_duration = time.time() - phase_start
@@ -1748,6 +1759,7 @@ def generate_video_thread(tts_service="elevenlabs", topic=None, max_length=None)
                 logger.error(
                     f"❌ Voiceover generation failed and no file was created in {phase_duration:.2f}s"
                 )
+                last_generation_status = f"error: Failed to generate voiceover"
                 raise Exception(f"Failed to generate voiceover: {str(e)}")
 
         # Create video using Vertex AI GPU (cloud-native - no local fallback)

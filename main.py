@@ -1699,13 +1699,56 @@ def generate_video_thread(tts_service="elevenlabs", topic=None, max_length=None)
         timing_metrics.start_phase("voiceover_generation")
         phase_start = time.time()
         audio_path = os.path.join(output_dir, "voiceover.mp3")
-        generate_voiceover(story, audio_path, tts_service=tts_service)
-        phase_duration = time.time() - phase_start
-        timing_metrics.end_phase()
-        send_custom_metric(
-            "phase_duration", phase_duration, {"phase": "voiceover_generation"}
-        )
-        logger.info(f"✅ Voiceover generation completed in {phase_duration:.2f}s")
+
+        try:
+            # Generate voiceover (will try ElevenLabs with Google TTS fallback)
+            generate_voiceover(story, audio_path, tts_service=tts_service)
+
+            # Verify the audio file was actually created
+            if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+                logger.info(
+                    f"✅ Voiceover file verified at {audio_path} ({os.path.getsize(audio_path)} bytes)"
+                )
+                phase_duration = time.time() - phase_start
+                timing_metrics.end_phase()
+                send_custom_metric(
+                    "phase_duration", phase_duration, {"phase": "voiceover_generation"}
+                )
+                logger.info(
+                    f"✅ Voiceover generation completed in {phase_duration:.2f}s"
+                )
+            else:
+                # File doesn't exist or is empty, which should never happen if generate_voiceover succeeded
+                logger.error(
+                    f"❌ Voiceover generation reported success but file is missing or empty at {audio_path}"
+                )
+                raise Exception("Voiceover file not created or empty")
+        except Exception as e:
+            # Log the error but don't raise immediately - check if file exists anyway
+            logger.error(f"❌ Error during voiceover generation: {str(e)}")
+
+            # Even if an exception was raised, check if the file was actually created
+            # (this handles the case where Google TTS worked but an error was still raised)
+            if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+                logger.info(
+                    f"✅ Despite error, voiceover file exists at {audio_path} ({os.path.getsize(audio_path)} bytes)"
+                )
+                phase_duration = time.time() - phase_start
+                timing_metrics.end_phase()
+                send_custom_metric(
+                    "phase_duration", phase_duration, {"phase": "voiceover_generation"}
+                )
+                logger.info(
+                    f"✅ Voiceover generation recovered in {phase_duration:.2f}s"
+                )
+            else:
+                # If the file really doesn't exist, then we have a true failure
+                phase_duration = time.time() - phase_start
+                timing_metrics.end_phase()
+                logger.error(
+                    f"❌ Voiceover generation failed and no file was created in {phase_duration:.2f}s"
+                )
+                raise Exception(f"Failed to generate voiceover: {str(e)}")
 
         # Create video using Vertex AI GPU (cloud-native - no local fallback)
         logger.info("🎬 Creating video...")

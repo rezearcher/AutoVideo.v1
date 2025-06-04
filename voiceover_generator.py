@@ -211,7 +211,9 @@ def generate_elevenlabs_tts(text: str, output_path: str) -> str:
             time.sleep(retry_delay * retry_count)  # Exponential backoff
 
 
-def generate_voiceover(story: str, output_path: str, tts_service: str = "elevenlabs") -> str:
+def generate_voiceover(
+    story: str, output_path: str, tts_service: str = "elevenlabs"
+) -> str:
     """
     Generate a voiceover for the story with automatic fallback from ElevenLabs to Google Cloud TTS.
 
@@ -234,7 +236,7 @@ def generate_voiceover(story: str, output_path: str, tts_service: str = "elevenl
         except Exception as e:
             logger.error(f"❌ Google TTS failed: {str(e)}")
             raise VoiceoverError(f"Google Cloud TTS generation failed: {str(e)}")
-    
+
     # Otherwise use ElevenLabs with Google fallback (default behavior)
     # Try ElevenLabs first
     try:

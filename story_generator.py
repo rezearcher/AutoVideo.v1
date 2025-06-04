@@ -137,19 +137,25 @@ def call_openai_with_backoff(max_retries=3, max_time=60, **kwargs):
     raise Exception(f"OpenAI API failed after {max_retries} attempts")
 
 
-def generate_story(prompt, timeout=90):
+def generate_story(prompt, timeout=90, max_length=None):
     """
     Generate a story from a prompt with enhanced retry logic.
 
     Args:
         prompt (str): The story prompt
         timeout (int): Maximum time in seconds to wait for story generation
+        max_length (int): Optional maximum length for the story (in tokens)
 
     Returns:
         tuple: (story, prompt)
     """
     logging.info(f"Starting story generation with prompt: {prompt}")
     logging.info(f"Story generation timeout set to {timeout} seconds")
+    if max_length:
+        logging.info(f"Maximum story length set to {max_length} tokens")
+    
+    # Default to 500 tokens if max_length is not specified
+    tokens = max_length if max_length else 500
 
     try:
         response = call_openai_with_backoff(
@@ -166,7 +172,7 @@ def generate_story(prompt, timeout=90):
                     "content": f"Write a compelling short story about: {prompt}. Make it visual and engaging for video content.",
                 },
             ],
-            max_tokens=500,
+            max_tokens=tokens,
             temperature=0.7,
         )
 

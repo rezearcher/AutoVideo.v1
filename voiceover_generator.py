@@ -228,45 +228,99 @@ def generate_voiceover(
     Raises:
         VoiceoverError: If both ElevenLabs and Google TTS fail
     """
+    start_time = time.time()
+    max_time = 300  # 5 minutes max for entire voiceover generation
+    
+    # Log which service we're using
+    logger.info(f"🎙️ Voiceover generation requested with service: {tts_service}")
+    
     # If Google TTS is explicitly requested, use it directly
     if tts_service.lower() == "google":
         logger.info("🔊 Using Google Cloud Text-to-Speech as requested...")
         try:
-            return generate_google_tts(story, output_path)
+            logger.info("🔄 Starting Google TTS generation...")
+            result = generate_google_tts(story, output_path)
+            duration = time.time() - start_time
+            logger.info(f"✅ Google TTS generation successful in {duration:.2f}s")
+            return result
         except Exception as e:
-            logger.error(f"❌ Google TTS failed: {str(e)}")
+            duration = time.time() - start_time
+            logger.error(f"❌ Google TTS failed after {duration:.2f}s: {str(e)}")
+            # Log the error details clearly for debugging
+            logger.error(f"❌ Google TTS error details: {type(e).__name__}: {str(e)}")
             raise VoiceoverError(f"Google Cloud TTS generation failed: {str(e)}")
 
     # Otherwise use ElevenLabs with Google fallback (default behavior)
     # Try ElevenLabs first
     try:
-        return generate_elevenlabs_tts(story, output_path)
+        logger.info("🔊 Attempting ElevenLabs TTS generation...")
+        start_elevenlabs = time.time()
+        result = generate_elevenlabs_tts(story, output_path)
+        duration = time.time() - start_elevenlabs
+        logger.info(f"✅ ElevenLabs generation successful in {duration:.2f}s")
+        return result
     except ElevenLabsQuotaError as e:
-        logger.warning(f"⚠️ ElevenLabs quota exceeded: {str(e)}")
+        duration = time.time() - start_elevenlabs
+        logger.warning(f"⚠️ ElevenLabs quota exceeded after {duration:.2f}s: {str(e)}")
         logger.info("🔄 Falling back to Google Cloud Text-to-Speech...")
+
+        # Check if we're about to exceed the total time limit
+        if time.time() - start_time > max_time:
+            logger.error(f"❌ Voiceover generation timed out after {max_time}s")
+            raise VoiceoverError(f"Voiceover generation timed out after {max_time}s")
 
         # Use Google TTS as fallback
         try:
-            return generate_google_tts(story, output_path)
+            start_google = time.time()
+            logger.info("🔄 Starting Google TTS fallback...")
+            result = generate_google_tts(story, output_path)
+            duration = time.time() - start_google
+            logger.info(f"✅ Google TTS fallback successful in {duration:.2f}s")
+            return result
         except Exception as fallback_error:
-            logger.error(f"❌ Google TTS fallback also failed: {str(fallback_error)}")
+            duration = time.time() - start_google
+            logger.error(f"❌ Google TTS fallback failed after {duration:.2f}s: {str(fallback_error)}")
+            # Log both errors clearly for debugging
+            logger.error(f"❌ ElevenLabs error: {type(e).__name__}: {str(e)}")
+            logger.error(f"❌ Google TTS error: {type(fallback_error).__name__}: {str(fallback_error)}")
             raise VoiceoverError(
                 f"Both ElevenLabs and Google TTS failed. "
                 f"ElevenLabs: {str(e)}, Google TTS: {str(fallback_error)}"
             )
     except ElevenLabsAPIError as e:
         # For other ElevenLabs errors, still try Google TTS but log differently
-        logger.warning(f"⚠️ ElevenLabs API error: {str(e)}")
+        duration = time.time() - start_elevenlabs
+        logger.warning(f"⚠️ ElevenLabs API error after {duration:.2f}s: {str(e)}")
         logger.info("🔄 Falling back to Google Cloud Text-to-Speech...")
 
+        # Check if we're about to exceed the total time limit
+        if time.time() - start_time > max_time:
+            logger.error(f"❌ Voiceover generation timed out after {max_time}s")
+            raise VoiceoverError(f"Voiceover generation timed out after {max_time}s")
+
         try:
-            return generate_google_tts(story, output_path)
+            start_google = time.time()
+            logger.info("🔄 Starting Google TTS fallback...")
+            result = generate_google_tts(story, output_path)
+            duration = time.time() - start_google
+            logger.info(f"✅ Google TTS fallback successful in {duration:.2f}s")
+            return result
         except Exception as fallback_error:
-            logger.error(f"❌ Google TTS fallback also failed: {str(fallback_error)}")
+            duration = time.time() - start_google
+            logger.error(f"❌ Google TTS fallback failed after {duration:.2f}s: {str(fallback_error)}")
+            # Log both errors clearly for debugging
+            logger.error(f"❌ ElevenLabs error: {type(e).__name__}: {str(e)}")
+            logger.error(f"❌ Google TTS error: {type(fallback_error).__name__}: {str(fallback_error)}")
             raise VoiceoverError(
                 f"Both ElevenLabs and Google TTS failed. "
                 f"ElevenLabs: {str(e)}, Google TTS: {str(fallback_error)}"
             )
+    except Exception as e:
+        # Handle any other unexpected errors
+        duration = time.time() - start_time
+        logger.error(f"❌ Unexpected error in voiceover generation after {duration:.2f}s: {str(e)}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        raise VoiceoverError(f"Unexpected error in voiceover generation: {str(e)}")
 
 
 def save_voiceover(voiceover_content, timestamp):

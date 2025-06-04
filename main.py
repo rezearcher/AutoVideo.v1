@@ -36,7 +36,7 @@ from image_generator import generate_images
 from story_generator import extract_image_prompts, generate_story, get_openai_client
 from timing_metrics import TimingMetrics
 from topic_manager import TopicManager
-from voiceover_generator import generate_voiceover
+from voiceover_generator import generate_voiceover, generate_google_tts, generate_elevenlabs_tts
 from youtube_uploader import upload_video
 
 # Optional import for local video processing fallback
@@ -952,12 +952,24 @@ def start_generation():
             )
             return jsonify({"error": "Application not properly initialized"}), 500
 
+        # Get request parameters
+        request_data = request.get_json() or {}
+        topic = request_data.get("topic")
+        max_length = request_data.get("max_length")
+        tts_service = request_data.get("tts_service", "elevenlabs")  # Default to elevenlabs
+        
+        # Log the generation request parameters
+        logger.info(f"🎬 Video generation requested - Topic: {topic}, TTS: {tts_service}")
+        
         # Send generation start metric
         send_custom_metric("generation_request", 1.0, {"status": "accepted"})
         send_custom_metric("generation_started", 1.0, {"trigger": "manual_api"})
 
         # Start video generation in a background thread
-        thread = threading.Thread(target=generate_video_thread)
+        thread = threading.Thread(
+            target=generate_video_thread,
+            kwargs={"tts_service": tts_service, "topic": topic, "max_length": max_length}
+        )
         thread.daemon = True
         thread.start()
 
@@ -1598,8 +1610,15 @@ def generate_video_batch():
         send_custom_metric("pipeline_ended", 1.0, {"mode": "batch"})
 
 
-def generate_video_thread():
-    """Background thread for video generation (monitoring mode)."""
+def generate_video_thread(tts_service="elevenlabs", topic=None, max_length=None):
+    """
+    Background thread for video generation (monitoring mode).
+    
+    Args:
+        tts_service (str): Text-to-speech service to use: "elevenlabs" or "google"
+        topic (str): Optional topic for the video
+        max_length (int): Optional maximum length for the story
+    """
     global is_generating, last_generation_status, topic_manager
 
     generation_start_time = time.time()
@@ -1608,6 +1627,9 @@ def generate_video_thread():
         is_generating = True
         # Clear old status and set to running
         last_generation_status = "generating"
+        
+        # Log generation parameters
+        logger.info(f"🚀 Starting video generation - TTS: {tts_service}, Topic: {topic}")
 
         # Start timing
         timing_metrics.start_pipeline()
@@ -1623,12 +1645,19 @@ def generate_video_thread():
         # Initialize topic manager and get next topic
         if topic_manager is None:
             topic_manager = TopicManager()
-        story_prompt = topic_manager.get_next_topic()
+            
+        # Use specified topic if provided, otherwise get one from topic manager
+        if topic:
+            story_prompt = topic
+            logger.info(f"📝 Using provided topic: {story_prompt}")
+        else:
+            story_prompt = topic_manager.get_next_topic()
+            logger.info(f"📝 Using generated topic: {story_prompt}")
 
         # Generate content
         timing_metrics.start_phase("story_generation")
         phase_start = time.time()
-        story, prompt = generate_story(story_prompt)
+        story, prompt = generate_story(story_prompt, max_length=max_length)
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()
         send_custom_metric(
@@ -1649,15 +1678,20 @@ def generate_video_thread():
         )
         send_custom_metric("images_generated", len(image_paths))
 
+        # Update status to show voiceover generation with TTS service
+        last_generation_status = f"generating voiceover using {tts_service}"
+        logger.info(f"🎙️ Generating voiceover using {tts_service} service...")
+        
         timing_metrics.start_phase("voiceover_generation")
         phase_start = time.time()
         audio_path = os.path.join(output_dir, "voiceover.mp3")
-        generate_voiceover(story, audio_path)
+        generate_voiceover(story, audio_path, tts_service=tts_service)
         phase_duration = time.time() - phase_start
         timing_metrics.end_phase()
         send_custom_metric(
             "phase_duration", phase_duration, {"phase": "voiceover_generation"}
         )
+        logger.info(f"✅ Voiceover generation completed in {phase_duration:.2f}s")
 
         # Create video using Vertex AI GPU (cloud-native - no local fallback)
         logger.info("🎬 Creating video...")
@@ -1665,8 +1699,8 @@ def generate_video_thread():
         phase_start = time.time()
         output_path = f"{output_dir}/final_video.mp4"
 
-        # Update status to show current phase
-        last_generation_status = "creating video via Vertex AI"
+        # Update status with job ID
+        last_generation_status = f"Vertex AI job running: {job_id}"
 
         # Use global Vertex AI GPU service (already initialized at startup)
         try:
@@ -1684,9 +1718,6 @@ def generate_video_thread():
             logger.info("📤 Submitting job to Vertex AI...")
             job_id = vertex_gpu_service.create_video_job(image_paths, audio_path, story)
             logger.info(f"✅ Submitted Vertex AI job: {job_id}")
-
-            # Update status with job ID
-            last_generation_status = f"Vertex AI job running: {job_id}"
 
             # Wait for completion
             logger.info("⏳ Waiting for job completion...")
@@ -2036,6 +2067,141 @@ def check_tts_health():
             ),
             500,
         )
+
+
+@app.route("/health/tts/test", methods=["GET"])
+def test_tts_services():
+    """
+    Test both TTS services directly and provide detailed diagnostic information.
+    This endpoint will actually attempt to generate audio with both services.
+    """
+    test_results = {
+        "timestamp": datetime.now().isoformat(),
+        "status": "testing",
+        "services": {
+            "elevenlabs": {"status": "untested"},
+            "google_tts": {"status": "untested"},
+        },
+    }
+
+    test_text = "This is a test of the text to speech system."
+    
+    # Test Google TTS first (as it's more reliable generally)
+    try:
+        from voiceover_generator import generate_google_tts
+        
+        logger.info("🔄 Testing Google Cloud TTS...")
+        test_results["services"]["google_tts"]["status"] = "testing"
+        
+        # Create a temporary file for the test audio
+        import tempfile
+        temp_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        temp_file.close()
+        
+        start_time = time.time()
+        generate_google_tts(test_text, temp_file.name)
+        duration = time.time() - start_time
+        
+        # Check if file was created and has content
+        if os.path.exists(temp_file.name) and os.path.getsize(temp_file.name) > 0:
+            test_results["services"]["google_tts"] = {
+                "status": "healthy",
+                "duration_seconds": round(duration, 2),
+                "file_size_bytes": os.path.getsize(temp_file.name),
+                "credentials_path": os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "not set"),
+            }
+            logger.info(f"✅ Google TTS test successful in {duration:.2f}s")
+        else:
+            test_results["services"]["google_tts"] = {
+                "status": "error",
+                "error": "Generated file is empty or missing",
+                "duration_seconds": round(duration, 2),
+            }
+            
+        # Clean up the temporary file
+        try:
+            os.unlink(temp_file.name)
+        except:
+            pass
+            
+    except Exception as e:
+        test_results["services"]["google_tts"] = {
+            "status": "error",
+            "error": str(e),
+            "error_type": type(e).__name__,
+        }
+        logger.error(f"❌ Google TTS test failed: {str(e)}")
+    
+    # Now test ElevenLabs
+    try:
+        from voiceover_generator import generate_elevenlabs_tts
+        
+        # Skip if no API key is configured
+        if not os.getenv("ELEVENLABS_API_KEY"):
+            test_results["services"]["elevenlabs"] = {
+                "status": "skipped",
+                "reason": "No API key configured"
+            }
+        else:
+            logger.info("🔄 Testing ElevenLabs TTS...")
+            test_results["services"]["elevenlabs"]["status"] = "testing"
+            
+            # Create a temporary file for the test audio
+            import tempfile
+            temp_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+            temp_file.close()
+            
+            start_time = time.time()
+            try:
+                generate_elevenlabs_tts(test_text, temp_file.name)
+                duration = time.time() - start_time
+                
+                # Check if file was created and has content
+                if os.path.exists(temp_file.name) and os.path.getsize(temp_file.name) > 0:
+                    test_results["services"]["elevenlabs"] = {
+                        "status": "healthy",
+                        "duration_seconds": round(duration, 2),
+                        "file_size_bytes": os.path.getsize(temp_file.name),
+                    }
+                    logger.info(f"✅ ElevenLabs test successful in {duration:.2f}s")
+                else:
+                    test_results["services"]["elevenlabs"] = {
+                        "status": "error",
+                        "error": "Generated file is empty or missing",
+                        "duration_seconds": round(duration, 2),
+                    }
+            except Exception as elevenlabs_error:
+                duration = time.time() - start_time
+                test_results["services"]["elevenlabs"] = {
+                    "status": "error",
+                    "error": str(elevenlabs_error),
+                    "error_type": type(elevenlabs_error).__name__,
+                    "duration_seconds": round(duration, 2),
+                }
+                logger.error(f"❌ ElevenLabs test failed: {str(elevenlabs_error)}")
+                
+            # Clean up the temporary file
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
+                
+    except Exception as e:
+        test_results["services"]["elevenlabs"] = {
+            "status": "error",
+            "error": str(e),
+            "error_type": type(e).__name__,
+        }
+        logger.error(f"❌ ElevenLabs test setup failed: {str(e)}")
+    
+    # Set overall status
+    if (test_results["services"]["google_tts"].get("status") == "healthy" or 
+        test_results["services"]["elevenlabs"].get("status") == "healthy"):
+        test_results["status"] = "healthy"
+    else:
+        test_results["status"] = "unhealthy"
+    
+    return jsonify(test_results)
 
 
 # Initialize the application

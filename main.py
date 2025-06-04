@@ -5,12 +5,30 @@ import os
 import sys
 import threading
 import time
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
 import google.auth
 from flask import Flask, jsonify, request
+
+# Handle Google Cloud credentials from environment variables
+try:
+    # Check if we have the credentials as content rather than path
+    if os.environ.get('GOOGLE_CLOUD_SA_KEY'):
+        # Create credentials file from environment variable
+        credentials_content = os.environ.get('GOOGLE_CLOUD_SA_KEY')
+        credentials_path = '/tmp/google-cloud-credentials.json'
+        
+        with open(credentials_path, 'w') as f:
+            f.write(credentials_content)
+        
+        # Set the credentials path environment variable
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+        print(f"✅ Google Cloud credentials written to temporary file: {credentials_path}")
+except Exception as e:
+    print(f"⚠️ Error setting up Google Cloud credentials: {e}")
 
 from image_generator import generate_images
 from story_generator import extract_image_prompts, generate_story, get_openai_client
@@ -1914,6 +1932,93 @@ def health_vertex_minimal():
             ),
             500,
         )
+
+
+@app.route('/health/tts', methods=['GET'])
+def check_tts_health():
+    """
+    Check the health of TTS services and report detailed status.
+    This endpoint is useful for troubleshooting TTS failures.
+    """
+    try:
+        result = {
+            "status": "checking",
+            "timestamp": datetime.now().isoformat(),
+            "services": {
+                "elevenlabs": {
+                    "configured": bool(os.getenv("ELEVENLABS_API_KEY")),
+                    "status": "unknown"
+                },
+                "google_tts": {
+                    "configured": bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS")),
+                    "status": "unknown",
+                    "credentials_path": os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "not set")
+                }
+            }
+        }
+        
+        # Check ElevenLabs if configured
+        if result["services"]["elevenlabs"]["configured"]:
+            try:
+                # Simple auth check with ElevenLabs API
+                import requests
+                api_key = os.getenv("ELEVENLABS_API_KEY")
+                headers = {
+                    "xi-api-key": api_key,
+                    "Content-Type": "application/json"
+                }
+                response = requests.get(
+                    "https://api.elevenlabs.io/v1/user/subscription",
+                    headers=headers,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    user_data = response.json()
+                    result["services"]["elevenlabs"]["status"] = "healthy"
+                    result["services"]["elevenlabs"]["quota"] = {
+                        "character_count": user_data.get("character_count", 0),
+                        "character_limit": user_data.get("character_limit", 0),
+                        "remaining_characters": user_data.get("character_limit", 0) - user_data.get("character_count", 0)
+                    }
+                else:
+                    result["services"]["elevenlabs"]["status"] = "error"
+                    result["services"]["elevenlabs"]["error"] = f"HTTP {response.status_code}: {response.text}"
+            except Exception as e:
+                result["services"]["elevenlabs"]["status"] = "error"
+                result["services"]["elevenlabs"]["error"] = str(e)
+        
+        # Check Google Cloud TTS if configured
+        if result["services"]["google_tts"]["configured"]:
+            try:
+                from google.cloud import texttospeech
+                client = texttospeech.TextToSpeechClient()
+                
+                # List available voices (lightweight API call)
+                voices = client.list_voices()
+                result["services"]["google_tts"]["status"] = "healthy"
+                result["services"]["google_tts"]["voices_available"] = len(voices.voices)
+            except Exception as e:
+                result["services"]["google_tts"]["status"] = "error"
+                result["services"]["google_tts"]["error"] = str(e)
+        
+        # Determine overall health
+        if (result["services"]["elevenlabs"]["status"] == "healthy" or 
+            result["services"]["google_tts"]["status"] == "healthy"):
+            result["status"] = "healthy"
+        elif (result["services"]["elevenlabs"]["configured"] and 
+              result["services"]["google_tts"]["configured"]):
+            result["status"] = "critical"
+        else:
+            result["status"] = "degraded"
+            
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
 
 
 # Initialize the application

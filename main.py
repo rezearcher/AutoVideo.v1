@@ -1,11 +1,11 @@
 # Auto Video Generator - Cloud Native
 # Updated: 2025-05-28 - GPU compatibility fixes included
+import json
 import logging
 import os
 import sys
 import threading
 import time
-import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict

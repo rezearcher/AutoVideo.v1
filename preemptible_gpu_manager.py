@@ -270,3 +270,4 @@ if __name__ == "__main__":
     
     logger.info("Preemptible GPU Manager initialized successfully")
     logger.info("Use manager.create_video_job_with_retry() to create jobs with preemptible GPU support") 
+

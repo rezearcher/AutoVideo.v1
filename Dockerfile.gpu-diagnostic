@@ -1,0 +1,73 @@
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+
+# Install Python and system dependencies with retry logic
+RUN apt-get update && \
+    (apt-get install -y \
+        python3-pip \
+        python3-dev \
+        git \
+        libgl1-mesa-dri \
+        libglx-mesa0 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libfontconfig1 \
+        libxrender1 \
+        ca-certificates \
+        software-properties-common \
+        wget \
+    || apt-get install -y --fix-missing \
+        python3-pip \
+        python3-dev \
+        git \
+        libgl1-mesa-dri \
+        libglx-mesa0 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libfontconfig1 \
+        libxrender1 \
+        ca-certificates \
+        software-properties-common \
+        wget) \
+    && ln -s /usr/bin/python3 /usr/bin/python
+
+# Install fonts
+RUN apt-get update && apt-get install -y \
+    fonts-dejavu-core \
+    fonts-dejavu-extra \
+    fonts-liberation \
+    && mkdir -p /app/fonts
+
+# Copy sample fonts as backup
+COPY fonts/* /app/fonts/
+
+# Install FFmpeg with NVENC support
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository ppa:jonathonf/ffmpeg-4 && \
+    apt-get update && \
+    apt-get install -y ffmpeg
+
+# Check if ffmpeg has NVENC support
+RUN ffmpeg -encoders | grep nvenc || echo "WARNING: ffmpeg does not have NVENC support"
+
+# Install Python dependencies
+COPY requirements-gpu.txt /app/
+RUN pip install --upgrade pip && pip install -r /app/requirements-gpu.txt
+
+# Install diagnostic tools
+RUN pip install numpy pillow opencv-python-headless moviepy
+
+# Copy diagnostic script
+COPY gpu_diagnostic.py /app/
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+
+WORKDIR /app
+
+# Default command to run the diagnostic script
+ENTRYPOINT ["python", "/app/gpu_diagnostic.py", "--test-encode", "--output", "/app/diagnostic_results.json"] 

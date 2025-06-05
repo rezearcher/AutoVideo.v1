@@ -3,6 +3,7 @@ import os
 import time
 from typing import Optional
 
+import google.auth
 import requests
 from dotenv import load_dotenv
 from google.cloud import texttospeech
@@ -35,24 +36,52 @@ def generate_google_tts(
     text: str, output_path: str, voice_name: str = "en-US-Studio-O"
 ) -> str:
     """
-    Generate voiceover using Google Cloud Text-to-Speech.
+    Generate voiceover using Google Cloud Text-to-Speech API.
 
     Args:
         text (str): The text to convert to speech
         output_path (str): Path where the voiceover should be saved
-        voice_name (str): Google TTS voice name to use
+        voice_name (str): Voice name to use (default: "en-US-Studio-O")
 
     Returns:
         str: Path to the saved voiceover file
 
     Raises:
-        VoiceoverError: If TTS generation fails
+        VoiceoverError: If an error occurs during TTS generation
     """
     try:
-        logger.info("🔄 Generating voiceover using Google Cloud Text-to-Speech...")
+        # Log attempt
+        logger.info("🔄 Generating voiceover using Google Cloud TTS...")
 
-        # Initialize the Text-to-Speech client
+        # Import here to avoid issues with circular imports
+        import os
+
+        # Check if credentials are properly set up
+        try:
+            # Get default credentials and project
+            credentials, project_id = google.auth.default()
+            logger.info(
+                f"🔑 Using Google Cloud service account: {getattr(credentials, 'service_account_email', 'Unknown')}"
+            )
+            logger.info(f"🔑 Project ID: {project_id}")
+        except Exception as cred_error:
+            logger.warning(f"⚠️ Default credentials not found: {cred_error}")
+            # Check if credentials file is explicitly set
+            creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+            if creds_path:
+                logger.info(f"🔑 Using explicit credentials file: {creds_path}")
+                if not os.path.exists(creds_path):
+                    logger.error(f"❌ Credentials file does not exist: {creds_path}")
+            else:
+                logger.warning(
+                    "⚠️ GOOGLE_APPLICATION_CREDENTIALS environment variable not set"
+                )
+
+        # Create the Text-to-Speech client
         client = texttospeech.TextToSpeechClient()
+
+        # Log successful client creation
+        logger.info("✅ TextToSpeechClient created successfully")
 
         # Set the text input to be synthesized
         synthesis_input = texttospeech.SynthesisInput(text=text)
@@ -61,20 +90,37 @@ def generate_google_tts(
         voice = texttospeech.VoiceSelectionParams(
             language_code="en-US",
             name=voice_name,
-            ssml_gender=texttospeech.SsmlVoiceGender.FEMALE,
+            ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL,
         )
 
-        # Select the type of audio file you want returned
+        # Select the type of audio file
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3,
             speaking_rate=1.0,
             pitch=0.0,
         )
 
+        # Log TTS request
+        logger.info(f"🔊 Sending TTS request for {len(text)} characters of text")
+
         # Perform the text-to-speech request
-        response = client.synthesize_speech(
-            input=synthesis_input, voice=voice, audio_config=audio_config
-        )
+        try:
+            response = client.synthesize_speech(
+                input=synthesis_input, voice=voice, audio_config=audio_config
+            )
+            logger.info(
+                f"✅ TTS request successful, received {len(response.audio_content)} bytes of audio"
+            )
+        except Exception as api_error:
+            error_msg = str(api_error)
+            if "permission" in error_msg.lower() or "credential" in error_msg.lower():
+                logger.error(
+                    f"❌ Google TTS permission/authentication error: {error_msg}"
+                )
+                raise VoiceoverError(f"Google TTS authentication error: {error_msg}")
+            else:
+                logger.error(f"❌ Google TTS API error: {error_msg}")
+                raise VoiceoverError(f"Google TTS API error: {error_msg}")
 
         # Create the directory if it doesn't exist
         os.makedirs(os.path.dirname(output_path), exist_ok=True)

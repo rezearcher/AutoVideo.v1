@@ -2341,6 +2341,114 @@ def test_google_tts():
         )
 
 
+@app.route("/health/tts/service-account-test", methods=["GET"])
+def test_service_account_tts():
+    """
+    A diagnostic test endpoint that checks Google TTS with explicit service account authentication
+    to help diagnose authentication issues.
+    """
+    try:
+        import json
+        import os
+
+        from google.cloud import texttospeech
+        from google.oauth2 import service_account
+
+        # Get the current service account details
+        try:
+            creds, project = google.auth.default()
+            service_account_email = getattr(creds, "service_account_email", "Unknown")
+        except Exception as e:
+            service_account_email = f"Error getting service account: {str(e)}"
+
+        # Check if we have a service account key in environment
+        service_account_info = os.environ.get("GOOGLE_CLOUD_SA_KEY")
+        has_sa_key_env = bool(service_account_info)
+
+        # Check for credentials file path
+        credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        has_credentials_path = bool(credentials_path) and os.path.exists(
+            credentials_path
+        )
+
+        # Test with default client creation
+        default_client_result = "Not tested"
+        try:
+            default_client = texttospeech.TextToSpeechClient()
+            # Try listing voices as a basic connectivity test
+            voices_response = default_client.list_voices()
+            default_client_result = (
+                f"Success - found {len(voices_response.voices)} voices"
+            )
+        except Exception as e:
+            default_client_result = f"Error: {str(e)}"
+
+        # Test with explicit service account if available
+        explicit_client_result = "Not tested (no service account key available)"
+        if service_account_info:
+            try:
+                # Parse the JSON string to dict if it's a string
+                if isinstance(service_account_info, str):
+                    service_account_info = json.loads(service_account_info)
+
+                # Create credentials explicitly
+                credentials = service_account.Credentials.from_service_account_info(
+                    service_account_info
+                )
+
+                # Create client with explicit credentials
+                explicit_client = texttospeech.TextToSpeechClient(
+                    credentials=credentials
+                )
+
+                # Try synthesizing a simple text
+                synthesis_input = texttospeech.SynthesisInput(text="Test")
+                voice = texttospeech.VoiceSelectionParams(
+                    language_code="en-US",
+                    ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL,
+                )
+                audio_config = texttospeech.AudioConfig(
+                    audio_encoding=texttospeech.AudioEncoding.MP3
+                )
+
+                response = explicit_client.synthesize_speech(
+                    input=synthesis_input, voice=voice, audio_config=audio_config
+                )
+
+                explicit_client_result = (
+                    f"Success - generated {len(response.audio_content)} bytes of audio"
+                )
+            except Exception as e:
+                explicit_client_result = f"Error: {str(e)}"
+
+        # Return detailed diagnostic information
+        return jsonify(
+            {
+                "status": "diagnostic_complete",
+                "service_account": service_account_email,
+                "project": project,
+                "has_sa_key_env": has_sa_key_env,
+                "has_credentials_path": has_credentials_path,
+                "credentials_path": credentials_path,
+                "default_client_test": default_client_result,
+                "explicit_client_test": explicit_client_result,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+    except Exception as e:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            500,
+        )
+
+
 # Initialize the application
 try:
     is_initialized = initialize_app()

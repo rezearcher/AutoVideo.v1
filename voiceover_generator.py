@@ -33,7 +33,7 @@ class ElevenLabsAPIError(VoiceoverError):
 
 
 def generate_google_tts(
-    text: str, output_path: str, voice_name: str = "en-US-Studio-O"
+    text: str, output_path: str, voice_name: str = "en-US-Wavenet-D"
 ) -> str:
     """
     Generate voiceover using Google Cloud Text-to-Speech API.
@@ -41,7 +41,7 @@ def generate_google_tts(
     Args:
         text (str): The text to convert to speech
         output_path (str): Path where the voiceover should be saved
-        voice_name (str): Voice name to use (default: "en-US-Studio-O")
+        voice_name (str): Voice name to use (default: "en-US-Wavenet-D")
 
     Returns:
         str: Path to the saved voiceover file
@@ -90,7 +90,7 @@ def generate_google_tts(
         voice = texttospeech.VoiceSelectionParams(
             language_code="en-US",
             name=voice_name,
-            ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL,
+            ssml_gender=texttospeech.SsmlVoiceGender.FEMALE,
         )
 
         # Select the type of audio file

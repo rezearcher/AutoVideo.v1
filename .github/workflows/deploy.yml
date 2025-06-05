@@ -43,7 +43,7 @@ jobs:
       id: check_changes
       run: |
         # Check if GPU-related files changed
-        if git diff --name-only HEAD~1 HEAD | grep -E "(gpu_worker\.py|Dockerfile\.gpu|requirements-gpu\.txt|caption_generator\.py|vertex_gpu_service\.py)" || [ "${{ github.event.inputs.skip_gpu_deployment }}" != "true" ]; then
+        if git diff --name-only HEAD~1 HEAD | grep -E "(gpu_worker\.py|gpu_worker_improved\.py|Dockerfile\.gpu|requirements-gpu\.txt|caption_generator\.py|vertex_gpu_service\.py)" || [ "${{ github.event.inputs.skip_gpu_deployment }}" != "true" ]; then
           echo "deploy_gpu=true" >> $GITHUB_OUTPUT
           echo "🎮 GPU container deployment needed"
         else

@@ -208,13 +208,13 @@ print('Images:', len(job_data['image_urls']))
 print('Audio URL:', job_data['audio_url'])
 "
     else
-        echo "❌ No job assets found - downloading fallback gpu_worker.py"
-        gsutil cp gs://{staging_bucket}/gpu_worker.py /workspace/ || echo "No fallback worker found"
+        echo "❌ No job assets found - downloading fallback gpu_worker_improved.py"
+        gsutil cp gs://{staging_bucket}/gpu_worker_improved.py /workspace/ || echo "No fallback worker found"
     fi
 else
     echo "📦 No job ID provided - downloading fallback assets"
     gsutil -m cp -r gs://{staging_bucket}/* /workspace/ || echo "No staging assets found"
-    gsutil cp gs://{staging_bucket}/gpu_worker.py /workspace/ || echo "Downloading from backup..."
+    gsutil cp gs://{staging_bucket}/gpu_worker_improved.py /workspace/ || echo "Downloading from backup..."
 fi
 
 # Create the render script

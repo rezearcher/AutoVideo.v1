@@ -623,7 +623,7 @@ class VertexGPUJobService:
                     "image_uri": f"gcr.io/{self.project_id}/av-gpu-job",
                     "command": [
                         "python",
-                        "/app/gpu_worker.py",
+                        "/app/gpu_worker_improved.py",
                         "--job-id",
                         job_id,
                         "--project-id",

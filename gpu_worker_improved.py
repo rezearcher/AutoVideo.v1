@@ -16,9 +16,7 @@ import traceback
 from typing import Any, Dict, List, Optional
 
 from google.cloud import storage
-from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.video.compositing.concatenate import concatenate_videoclips
-from moviepy.video.VideoClip import ImageClip
+from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
 
 # Configure detailed logging
 logging.basicConfig(

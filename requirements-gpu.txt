@@ -1,5 +1,5 @@
 # GPU Container Dependencies - Updated for MoviePy support
-moviepy==2.1.1
+moviepy==1.0.3
 opencv-python-headless>=4.8.0
 numpy>=1.25.0
 Pillow==10.0.0

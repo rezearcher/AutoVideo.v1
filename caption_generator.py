@@ -1,8 +1,9 @@
 import logging
 import os
+from typing import List, Tuple
 
 import numpy as np
-from moviepy import CompositeVideoClip, ImageClip, VideoFileClip
+from moviepy.editor import CompositeVideoClip, ImageClip, VideoFileClip
 from PIL import Image, ImageDraw, ImageFont
 
 # Configure logging

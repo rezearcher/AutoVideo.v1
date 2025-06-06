@@ -50,9 +50,6 @@ class GPUVideoProcessor:
         # Configure MoviePy
         self.configure_moviepy()
 
-        # Create log buffer for uploading later
-        self.log_messages = []
-
     def configure_moviepy(self):
         """Configure MoviePy with proper settings for container environment"""
         try:
@@ -85,6 +82,10 @@ class GPUVideoProcessor:
         else:
             logger.debug(message)
 
+        # Initialize log_messages if it doesn't exist yet
+        if not hasattr(self, 'log_messages'):
+            self.log_messages = []
+            
         self.log_messages.append(f"{level.upper()}: {message}")
 
     def upload_logs(self, job_id: str):

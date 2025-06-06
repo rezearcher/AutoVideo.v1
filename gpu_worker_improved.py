@@ -83,9 +83,9 @@ class GPUVideoProcessor:
             logger.debug(message)
 
         # Initialize log_messages if it doesn't exist yet
-        if not hasattr(self, 'log_messages'):
+        if not hasattr(self, "log_messages"):
             self.log_messages = []
-            
+
         self.log_messages.append(f"{level.upper()}: {message}")
 
     def upload_logs(self, job_id: str):

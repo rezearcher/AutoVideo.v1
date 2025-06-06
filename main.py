@@ -939,18 +939,18 @@ def status():
 def cancel_generation():
     """Cancel the current video generation process."""
     global is_generating, is_initialized, video_file_path, current_phase
-    
+
     logger.info("🚫 Canceling current generation process...")
-    
+
     # Reset all the global flags
     is_generating = False
     is_initialized = False
     video_file_path = None
     current_phase = None
-    
+
     # Reset timing metrics
     reset_timing_metrics()
-    
+
     return jsonify({"success": True, "message": "Video generation canceled"})
 
 
@@ -975,13 +975,13 @@ def start_generation():
 def reset():
     """Reset the generation state for debugging purposes"""
     global is_generating, last_generation_status, last_generation_time, timing_metrics
-    
+
     is_generating = False
     timing_metrics.current_phase = None
     timing_metrics.current_phase_duration = None
     last_generation_status = "reset"
     last_generation_time = None
-    
+
     return jsonify({"status": "success", "message": "Generation state reset"})
 
 

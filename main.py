@@ -974,11 +974,13 @@ def start_generation():
 @app.route("/reset", methods=["POST"])
 def reset():
     """Reset the generation state for debugging purposes"""
-    app.state.is_generating = False
-    app.state.timing_metrics.current_phase = None
-    app.state.timing_metrics.current_phase_duration = None
-    app.state.last_generation_status = "reset"
-    app.state.last_generation_time = None
+    global is_generating, last_generation_status, last_generation_time, timing_metrics
+    
+    is_generating = False
+    timing_metrics.current_phase = None
+    timing_metrics.current_phase_duration = None
+    last_generation_status = "reset"
+    last_generation_time = None
     
     return jsonify({"status": "success", "message": "Generation state reset"})
 

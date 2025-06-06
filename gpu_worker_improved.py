@@ -47,8 +47,32 @@ class GPUVideoProcessor:
         logger.info(f"🖥️ GPU available: {self.gpu_available}")
         logger.info(f"🎬 NVENC available: {self.nvenc_available}")
 
+        # Configure MoviePy
+        self.configure_moviepy()
+
         # Create log buffer for uploading later
         self.log_messages = []
+
+    def configure_moviepy(self):
+        """Configure MoviePy with proper settings for container environment"""
+        try:
+            # Try to configure ImageMagick path
+            import moviepy.config as mpconf
+
+            # Check if ImageMagick is installed
+            imagemagick_path = None
+            for path in ["/usr/bin/convert", "/usr/local/bin/convert"]:
+                if os.path.exists(path):
+                    imagemagick_path = path
+                    break
+
+            if imagemagick_path:
+                self.log("info", f"Setting ImageMagick binary to {imagemagick_path}")
+                mpconf.change_settings({"IMAGEMAGICK_BINARY": imagemagick_path})
+            else:
+                self.log("warning", "ImageMagick not found, text clips may not work")
+        except Exception as e:
+            self.log("warning", f"Failed to configure MoviePy: {e}")
 
     def log(self, level: str, message: str):
         """Log a message and store it for later upload"""
@@ -319,6 +343,22 @@ class GPUVideoProcessor:
                 for i, image_path in enumerate(image_paths):
                     if os.path.exists(image_path):
                         try:
+                            # Check image file integrity
+                            try:
+                                from PIL import Image
+
+                                with Image.open(image_path) as img:
+                                    # Just load to verify it's valid
+                                    img_size = img.size
+                                    self.log(
+                                        "info", f"Image {i} dimensions: {img_size}"
+                                    )
+                            except Exception as img_error:
+                                self.log(
+                                    "warning", f"Image {i} may be corrupt: {img_error}"
+                                )
+                                # Continue anyway, let MoviePy try
+
                             clip = ImageClip(image_path).set_duration(
                                 5
                             )  # 5 seconds per image
@@ -384,6 +424,7 @@ class GPUVideoProcessor:
                         fps=24,
                         codec="libx264",  # This gets overridden by ffmpeg_params
                         ffmpeg_params=ffmpeg_params,
+                        logger=None,  # Disable logger to avoid clutter
                     )
                     self.log(
                         "info",
@@ -391,30 +432,74 @@ class GPUVideoProcessor:
                     )
                 except Exception as write_error:
                     self.log("error", f"Error during video encoding: {write_error}")
+                    self.log("error", f"Traceback: {traceback.format_exc()}")
 
-                    # If GPU encoding failed, try CPU fallback
+                    # If GPU encoding failed, try CPU fallback with minimal settings
                     if self.gpu_available and self.nvenc_available:
                         self.log("info", "Trying CPU encoding as fallback...")
-                        cpu_params = [
-                            "-c:v",
-                            "libx264",
-                            "-preset",
-                            "medium",
-                            "-threads",
-                            "0",
-                        ]
-                        final_clip.write_videofile(
-                            temp_video_path,
-                            fps=24,
-                            codec="libx264",
-                            ffmpeg_params=cpu_params,
-                        )
-                        self.log(
-                            "info",
-                            f"CPU fallback encoding successful: {os.path.getsize(temp_video_path)} bytes",
-                        )
+                        try:
+                            cpu_params = [
+                                "-c:v",
+                                "libx264",
+                                "-preset",
+                                "ultrafast",  # Use ultrafast preset for speed
+                                "-crf",
+                                "28",  # Lower quality for faster encoding
+                                "-threads",
+                                "0",
+                            ]
+                            final_clip.write_videofile(
+                                temp_video_path,
+                                fps=24,
+                                codec="libx264",
+                                ffmpeg_params=cpu_params,
+                                logger=None,
+                            )
+                            self.log(
+                                "info",
+                                f"CPU fallback encoding successful: {os.path.getsize(temp_video_path)} bytes",
+                            )
+                        except Exception as cpu_error:
+                            self.log(
+                                "error", f"CPU fallback encoding failed: {cpu_error}"
+                            )
+                            raise
                     else:
-                        raise  # Re-raise if not a GPU->CPU fallback scenario
+                        # Try absolute minimal encoding settings
+                        self.log("info", "Trying minimal encoding settings...")
+                        try:
+                            minimal_params = [
+                                "-c:v",
+                                "libx264",
+                                "-preset",
+                                "ultrafast",
+                                "-crf",
+                                "30",
+                                "-pix_fmt",
+                                "yuv420p",
+                                "-movflags",
+                                "+faststart",
+                            ]
+                            # Try to write with minimal params and reduced resolution
+                            # Scale down the clip to reduce encoding burden
+                            final_clip = final_clip.resize(height=360)  # Scale to 360p
+
+                            final_clip.write_videofile(
+                                temp_video_path,
+                                fps=15,  # Reduce framerate
+                                codec="libx264",
+                                ffmpeg_params=minimal_params,
+                                logger=None,
+                            )
+                            self.log(
+                                "info",
+                                f"Minimal encoding successful: {os.path.getsize(temp_video_path)} bytes",
+                            )
+                        except Exception as minimal_error:
+                            self.log(
+                                "error", f"Minimal encoding failed: {minimal_error}"
+                            )
+                            raise
 
                 # Clean up clips
                 self.log("info", "Cleaning up video clips...")

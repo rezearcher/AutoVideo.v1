@@ -2,7 +2,7 @@ FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
 # Install Python and system dependencies with retry logic
 RUN apt-get update && \
-    (apt-get install -y \
+    apt-get install -y \
         python3-pip \
         python3-dev \
         ffmpeg \
@@ -15,19 +15,9 @@ RUN apt-get update && \
         libfontconfig1 \
         libxrender1 \
         ca-certificates \
-    || apt-get install -y --fix-missing \
-        python3-pip \
-        python3-dev \
-        ffmpeg \
-        git \
-        libgl1-mesa-dri \
-        libglx-mesa0 \
-        libglib2.0-0 \
-        libsm6 \
-        libxext6 \
-        libfontconfig1 \
-        libxrender1 \
-        ca-certificates) \
+        imagemagick \
+        fonts-dejavu \
+        fonts-liberation \
     && ln -s /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,8 +25,8 @@ RUN apt-get update && \
 COPY requirements-gpu.txt .
 RUN pip install --upgrade pip && pip install -r requirements-gpu.txt
 
-# Install additional dependencies for Vertex AI
-RUN pip install google-cloud-storage google-cloud-aiplatform
+# Install additional dependencies for Vertex AI explicitly
+RUN pip install google-cloud-storage==2.12.0 google-cloud-aiplatform==1.36.4
 
 # Copy application code
 COPY . /app
@@ -49,5 +39,9 @@ COPY caption_generator.py /app/
 ENV PYTHONPATH=/app
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+
+# Configure ImageMagick for MoviePy
+RUN mkdir -p /root/.moviepy && \
+    echo "IMAGEMAGICK_BINARY=convert" > /root/.moviepy/moviepy.conf
 
 ENTRYPOINT ["python", "gpu_worker_improved.py"] 

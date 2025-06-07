@@ -115,6 +115,64 @@ app_initialized = False
 # Global variable for current render job
 current_render_job_id = None
 
+# Add these functions after the declaration of the timing_metrics variable (around line 91)
+
+
+def set_current_phase(phase_name):
+    """Set the current phase of video generation and update metrics."""
+    global timing_metrics, current_phase  # noqa: F824 - timing_metrics is modified not assigned
+
+    # End the previous phase if there was one
+    if timing_metrics.current_phase:
+        timing_metrics.end_phase()
+
+    # Start the new phase if it's not None
+    if phase_name:
+        timing_metrics.start_phase(phase_name)
+        current_phase = phase_name
+    else:
+        current_phase = None
+
+    logger.info(f"Phase set to: {phase_name}")
+
+
+def reset_timing_metrics():
+    """Reset all timing metrics for a new generation."""
+    global timing_metrics  # noqa: F824 - timing_metrics is modified not assigned
+
+    # Reset the existing TimingMetrics instance instead of creating a new one
+    timing_metrics.start_time = None
+    timing_metrics.end_time = None
+    timing_metrics.phase_times = {}
+    timing_metrics.current_phase = None
+    timing_metrics.phase_start_time = None
+    timing_metrics.total_duration = None
+
+    # Start the pipeline timing
+    timing_metrics.start_pipeline()
+    logger.info("Timing metrics reset")
+
+
+def generate_video_batch():
+    """Generate a video in batch mode (called from command line)."""
+    logger.info("Starting batch video generation...")
+
+    try:
+        # Use the topic manager to get a topic
+        topic_manager = TopicManager()
+        topic = topic_manager.get_next_topic()
+
+        logger.info(f"Selected topic: {topic}")
+
+        # Generate the video using the same background process
+        generate_video_background(topic)
+
+        logger.info("Batch video generation completed successfully")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Batch video generation failed: {str(e)}")
+        sys.exit(1)
+
 
 def send_custom_metric(metric_name: str, value: float, labels: dict = None):
     """Send a custom metric to Google Cloud Monitoring."""
@@ -1084,13 +1142,15 @@ def generate_video_background(topic):
 @app.route("/reset", methods=["POST"])
 def reset():
     """Reset the generation state for debugging purposes"""
-    global is_generating, last_generation_status, last_generation_time, timing_metrics
+    global is_generating, last_generation_status, last_generation_time
 
+    # Reset state variables
     is_generating = False
-    timing_metrics.current_phase = None
-    timing_metrics.current_phase_duration = None
     last_generation_status = "reset"
     last_generation_time = None
+
+    # Reset timing metrics
+    reset_timing_metrics()
 
     return jsonify({"status": "success", "message": "Generation state reset"})
 

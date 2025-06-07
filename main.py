@@ -965,33 +965,35 @@ def start_generation():
 
         # Get request data
         data = request.json or {}
-        
+
         # Start a background thread for the video generation
         topic = data.get("topic", "The future of technology")
         logger.info(f"🚀 Starting video generation for topic: '{topic}'")
-        
+
         # Update global state
         is_generating = True
         is_initialized = True
         last_generation_status = "initializing"
         last_generation_time = datetime.now()
-        
+
         # Reset timing metrics
         reset_timing_metrics()
-        
+
         # Start the generation in a background thread
         thread = threading.Thread(target=generate_video_background, args=(topic,))
         thread.daemon = True
         thread.start()
-        
+
         # Send custom metric for generation start
         send_custom_metric("pipeline_started", 1.0)
-        
-        return jsonify({
-            "status": "started",
-            "topic": topic,
-            "timestamp": datetime.now().isoformat()
-        })
+
+        return jsonify(
+            {
+                "status": "started",
+                "topic": topic,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     except Exception as e:
         report_error(e, "start_generation")
@@ -1001,74 +1003,78 @@ def start_generation():
 def generate_video_background(topic):
     """Background thread for video generation process."""
     global is_generating, last_generation_status, last_generation_time, video_file_path
-    
+
     try:
         # Set up timing metrics
         start_time = time.time()
         set_current_phase("story_generation")
-        
+
         logger.info(f"Generating story for topic: {topic}")
         story, _ = generate_story(f"Write a story about {topic}", timeout=60)
-        
+
         # Extract image prompts
         set_current_phase("prompt_extraction")
         logger.info("Extracting image prompts from story")
         image_prompts = extract_image_prompts(story, num_scenes=5)
-        
+
         # Generate images
         set_current_phase("image_generation")
         logger.info(f"Generating {len(image_prompts)} images")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_dir = f"output/run_{timestamp}"
         os.makedirs(output_dir, exist_ok=True)
-        
+
         image_paths = generate_images(image_prompts, f"{output_dir}/images")
-        
+
         # Generate voiceover
         set_current_phase("voiceover_generation")
         logger.info("Generating voiceover")
         audio_path = f"{output_dir}/audio.mp3"
-        
+
         try:
             # First try ElevenLabs
             audio_path = generate_elevenlabs_tts(story, audio_path)
             logger.info("Generated voiceover using ElevenLabs")
         except Exception as e:
             # Fall back to Google TTS
-            logger.warning(f"ElevenLabs TTS failed, falling back to Google TTS: {str(e)}")
+            logger.warning(
+                f"ElevenLabs TTS failed, falling back to Google TTS: {str(e)}"
+            )
             audio_path = generate_google_tts(story, audio_path)
             logger.info("Generated voiceover using Google TTS fallback")
-        
+
         # Create video (CPU fallback method)
         set_current_phase("video_creation")
         logger.info("Creating video using CPU fallback")
         video_path = f"{output_dir}/video.mp4"
-        
+
         # Use the local video processing if available
         if LOCAL_VIDEO_PROCESSING_AVAILABLE and create_video:
-            video_file_path = create_video(image_paths, audio_path, story, timestamp, video_path)
+            video_file_path = create_video(
+                image_paths, audio_path, story, timestamp, video_path
+            )
             logger.info(f"Video created successfully: {video_file_path}")
         else:
             logger.error("Local video processing not available")
             raise Exception("Video creation failed: local processing unavailable")
-        
+
         # Update status
         last_generation_status = "completed"
         last_generation_time = datetime.now()
-        
+
         # Record completion metric
         total_duration = time.time() - start_time
         send_custom_metric("pipeline_completed", 1.0, {"status": "success"})
         send_custom_metric("pipeline_duration", total_duration)
-        
+
         logger.info(f"✅ Video generation completed in {total_duration:.2f} seconds")
-        
+
     except Exception as e:
         logger.error(f"❌ Video generation failed: {str(e)}")
         last_generation_status = f"error: {str(e)}"
         last_generation_time = datetime.now()
         send_custom_metric("pipeline_completed", 0.0, {"status": "error"})
-    
+
     finally:
         # Reset the generation flag
         is_generating = False
@@ -1080,7 +1086,7 @@ def reset():
     """Reset the generation state for debugging purposes"""
     global is_generating, last_generation_status, last_generation_time, timing_metrics
 
-        is_generating = False
+    is_generating = False
     timing_metrics.current_phase = None
     timing_metrics.current_phase_duration = None
     last_generation_status = "reset"

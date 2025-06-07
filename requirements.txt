@@ -11,6 +11,8 @@ google-cloud-texttospeech==2.19.0
 google-cloud-translate==3.18.0
 google-cloud-videointelligence==2.14.1
 google-cloud-aiplatform>=1.38.0
+vertexai==1.36.0
+google-ai-generativelanguage==0.4.0
 openai==1.58.1
 requests==2.32.3
 pillow==10.4.0

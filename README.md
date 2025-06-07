@@ -331,3 +331,25 @@ After deployment, you'll have:
 **Production Status**: **ENTERPRISE-READY** with unified CI/CD pipeline, multi-region resilience, and comprehensive monitoring. The system delivers reliable, cost-effective video generation with maximum automation and minimal maintenance overhead.
 
 *For support, check GitHub Issues, Cloud Monitoring dashboards, or the comprehensive documentation.*
+
+## 🎬 Features
+
+- 📝 **AI Story Generation**: Creates engaging stories on any topic
+- 🖼️ **AI Image Generation**: Generates visually stunning images for each scene
+- 🔊 **AI Voice Generation**: Produces natural-sounding voiceovers
+- 🎥 **Dynamic Video Creation**: Several video creation options:
+  - **Veo 3 Video Generation**: Cinematic video clips with camera movement and ambient audio
+  - **Local Video Rendering**: CPU-based rendering using FFmpeg
+  - **Vertex AI GPU Workers**: GPU-accelerated video processing
+
+### New in v2.0: Veo-Powered Video Generation
+
+The system now integrates Google's Veo 3 video generation API for dramatically improved video quality:
+
+- 🎥 **Cinematic Motion**: Natural camera movements (dolly, pan, tilt) vs. static slide shows
+- 🎭 **Scene Depth**: Proper depth-of-field and bokeh effects for visual depth
+- 🔊 **Ambient Audio**: Natural sound field with optional dialogue
+- 🧩 **Multi-Scene Videos**: Generates multiple clips and stitches them with crossfades
+- 🏆 **Professional Quality**: Much higher quality output comparable to professional video
+
+## 🚀 Getting Started

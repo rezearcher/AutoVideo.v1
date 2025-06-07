@@ -47,13 +47,17 @@ from youtube_uploader import upload_video
 
 # Optional import for local video processing fallback
 try:
-    from video_creator import create_video
+    from video_creator import create_video, create_veo_video, VEOAI_AVAILABLE
 
     LOCAL_VIDEO_PROCESSING_AVAILABLE = True
+    LOCAL_RENDER_ALLOWED = True
 except ImportError as e:
     LOCAL_VIDEO_PROCESSING_AVAILABLE = False
+    LOCAL_RENDER_ALLOWED = False
     logging.warning(f"Local video processing not available: {e}")
     create_video = None
+    create_veo_video = None
+    VEOAI_AVAILABLE = False
 
 # Google Cloud Monitoring imports
 try:
@@ -405,73 +409,112 @@ def openai_health_check():
 
 @app.route("/health/vertex-ai")
 def health_check_vertex_ai():
-    """Test Vertex AI connectivity through global GPU service"""
+    """Health check for Vertex AI connectivity."""
+    result = {"status": "unknown", "details": {}}
 
     try:
-        if vertex_gpu_service is None:
-            return (
-                jsonify(
-                    {
-                        "status": "unhealthy",
-                        "vertex_ai": "unavailable",
-                        "error": "VertexGPUJobService not initialized",
-                        "timestamp": datetime.utcnow().isoformat(),
-                    }
-                ),
-                500,
-            )
+        # Check if we have a Vertex AI client
+        from google.cloud import aiplatform
 
-        # Test connectivity using the global service
-        connectivity_result = vertex_gpu_service.test_vertex_ai_connectivity()
+        # Get project ID from environment variable or metadata server
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+        if not project_id:
+            try:
+                import requests
 
-        # Send health check metric
-        send_custom_metric(
-            "vertex_ai_health_check",
-            1.0 if connectivity_result["status"] == "healthy" else 0.0,
-            {"status": connectivity_result["status"]},
-        )
+                metadata_url = "http://metadata.google.internal/computeMetadata/v1/project/project-id"
+                metadata_headers = {"Metadata-Flavor": "Google"}
+                project_id = requests.get(
+                    metadata_url, headers=metadata_headers, timeout=2
+                ).text
+            except Exception as e:
+                result["status"] = "error"
+                result["details"]["project_id_error"] = str(e)
+                return jsonify(result), 500
 
-        if connectivity_result["status"] == "healthy":
-            return jsonify(
-                {
-                    "status": "healthy",
-                    "vertex_ai": "connected",
-                    "message": connectivity_result["message"],
-                    "project_id": connectivity_result["project_id"],
-                    "location": connectivity_result["region"],
-                    "test_job_name": connectivity_result["test_job_name"],
-                    "timestamp": datetime.utcnow().isoformat(),
-                }
+        result["details"]["project_id"] = project_id
+
+        # Try to initialize the client to verify service account permissions
+        try:
+            aiplatform.init(project=project_id, location="us-central1")
+            result["details"]["client_init"] = "success"
+        except Exception as e:
+            result["status"] = "error"
+            result["details"]["client_init_error"] = str(e)
+            return jsonify(result), 500
+
+        # Test the simplest possible API call to verify service account permissions
+        try:
+            response = aiplatform.Model.list(filter="display_name=bert-base")
+            result["details"]["api_call"] = "success"
+            result["details"]["api_response"] = "Got response with {} models".format(
+                len(response)
             )
-        else:
-            return (
-                jsonify(
-                    {
-                        "status": "unhealthy",
-                        "vertex_ai": "failed",
-                        "error": connectivity_result["error"],
-                        "project_id": connectivity_result["project_id"],
-                        "location": connectivity_result["region"],
-                        "timestamp": datetime.utcnow().isoformat(),
-                    }
-                ),
-                500,
-            )
+        except Exception as e:
+            result["status"] = "error"
+            result["details"]["api_call_error"] = str(e)
+            return jsonify(result), 500
+
+        result["status"] = "healthy"
+        return jsonify(result)
 
     except Exception as e:
-        logger.error(f"Vertex AI health check failed: {str(e)}", exc_info=True)
-        send_custom_metric("vertex_ai_health_check", 0.0, {"status": "error"})
-        return (
-            jsonify(
-                {
-                    "status": "unhealthy",
-                    "vertex_ai": "failed",
-                    "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat(),
-                }
-            ),
-            500,
-        )
+        result["status"] = "error"
+        result["details"]["error"] = str(e)
+        return jsonify(result), 500
+
+
+@app.route("/health/veo")
+def health_check_veo():
+    """Health check for Veo API connectivity."""
+    result = {"status": "unknown", "details": {}}
+
+    try:
+        # Check if the Veo module is available
+        if not VEOAI_AVAILABLE:
+            result["status"] = "unavailable"
+            result["details"]["error"] = "Veo SDK not installed"
+            return jsonify(result), 503
+        
+        # Try to initialize the Veo model to verify permissions
+        try:
+            from vertexai.preview.generative_models import GenerativeModel
+            
+            # Just attempt to load the model (won't make an API call yet)
+            model = GenerativeModel("veo-3")
+            result["details"]["model_init"] = "success"
+            
+            # Try to list available models to check API connectivity
+            from vertexai.preview import models
+            
+            # Check if the model exists in the list
+            try:
+                model_list = [m.name for m in models.list_models()]
+                if "veo-3" in model_list or any("veo" in m.lower() for m in model_list):
+                    result["details"]["model_exists"] = True
+                    result["details"]["available_models"] = [m for m in model_list if "veo" in m.lower()]
+                else:
+                    result["details"]["model_exists"] = False
+                    result["details"]["note"] = "Veo models not found in model list"
+            except Exception as e:
+                result["details"]["model_list_error"] = str(e)
+                # Continue with health check even if model listing fails
+            
+            # For a more thorough check, we could generate a tiny test video
+            # but that would consume quota, so we'll skip it for health checks
+            
+            result["status"] = "healthy"
+            return jsonify(result)
+            
+        except Exception as e:
+            result["status"] = "error"
+            result["details"]["model_init_error"] = str(e)
+            return jsonify(result), 500
+
+    except Exception as e:
+        result["status"] = "error"
+        result["details"]["error"] = str(e)
+        return jsonify(result), 500
 
 
 @app.get("/health/quota")
@@ -1068,61 +1111,82 @@ def generate_video_background(topic):
             audio_path = generate_google_tts(story, audio_path)
             logger.info("Generated voiceover using Google TTS fallback")
 
-        # Create video (CPU fallback method)
+        # Create video 
         set_current_phase("video_creation")
-        logger.info("Creating video using CPU fallback")
+        logger.info("Creating video")
         video_path = f"{output_dir}/video.mp4"
 
-        # Use the local video processing if available
-        if LOCAL_VIDEO_PROCESSING_AVAILABLE and create_video:
-            video_file_path = create_video(
-                image_paths, audio_path, story, timestamp, video_path
-            )
-            logger.info(f"Video created successfully: {video_file_path}")
+        # Try Veo video generation first if available
+        if VEOAI_AVAILABLE and create_veo_video:
+            logger.info("Attempting to create video with Veo AI")
+            try:
+                video_file_path = create_veo_video(story, video_path, num_scenes=5)
+                logger.info(f"Veo video created successfully: {video_file_path}")
+            except Exception as veo_error:
+                logger.error(f"Veo video creation failed: {str(veo_error)}")
+                logger.info("Falling back to other video creation methods")
+                video_file_path = None
         else:
-            # Try to use Vertex AI GPU service as fallback if available
-            if vertex_gpu_service is not None:
-                logger.info(
-                    "Local video processing not available, trying Vertex AI GPU service"
+            logger.info("Veo AI not available, trying alternative methods")
+            video_file_path = None
+
+        # If Veo failed, use local video processing if available
+        if video_file_path is None and LOCAL_VIDEO_PROCESSING_AVAILABLE and LOCAL_RENDER_ALLOWED and create_video:
+            logger.info("Creating video using local processing")
+            try:
+                video_file_path = create_video(
+                    image_paths, audio_path, story, timestamp, video_path
                 )
-                try:
-                    job_id = vertex_gpu_service.create_video_job(
-                        image_paths, audio_path, story
-                    )
-                    logger.info(f"Submitted Vertex AI GPU job with ID: {job_id}")
+                logger.info(f"Video created successfully with local processing: {video_file_path}")
+            except Exception as local_error:
+                logger.error(f"Local video processing failed: {str(local_error)}")
+                video_file_path = None
 
-                    # Wait for job completion with timeout
-                    status = vertex_gpu_service.wait_for_job_completion(
-                        job_id, timeout=600
-                    )
+        # If both Veo and local processing failed, try Vertex AI GPU service as last resort
+        if video_file_path is None and vertex_gpu_service is not None:
+            logger.info(
+                "Trying Vertex AI GPU service as last resort"
+            )
+            try:
+                job_id = vertex_gpu_service.create_video_job(
+                    image_paths, audio_path, story
+                )
+                logger.info(f"Submitted Vertex AI GPU job with ID: {job_id}")
 
-                    if status.get("status") == "completed":
-                        # Download the video result
+                # Wait for job completion with timeout
+                status = vertex_gpu_service.wait_for_job_completion(
+                    job_id, timeout=600
+                )
+
+                if status.get("status") == "completed":
+                    # Download the video result
+                    logger.info(
+                        f"GPU job completed successfully, downloading video"
+                    )
+                    if vertex_gpu_service.download_video_result(job_id, video_path):
+                        video_file_path = video_path
                         logger.info(
-                            f"GPU job completed successfully, downloading video"
+                            f"Video downloaded successfully: {video_file_path}"
                         )
-                        if vertex_gpu_service.download_video_result(job_id, video_path):
-                            video_file_path = video_path
-                            logger.info(
-                                f"Video downloaded successfully: {video_file_path}"
-                            )
-                        else:
-                            raise Exception("Failed to download video from GPU job")
                     else:
-                        raise Exception(
-                            f"GPU job failed with status: {status.get('status')}"
-                        )
-
-                except Exception as gpu_error:
-                    logger.error(
-                        f"Vertex AI GPU video creation failed: {str(gpu_error)}"
-                    )
+                        raise Exception("Failed to download video from GPU job")
+                else:
                     raise Exception(
-                        f"Video creation failed: GPU processing error - {str(gpu_error)}"
+                        f"GPU job failed with status: {status.get('status')}"
                     )
-            else:
-                logger.error("Neither local nor GPU video processing available")
-                raise Exception("Video creation failed: no video processing available")
+
+            except Exception as gpu_error:
+                logger.error(
+                    f"Vertex AI GPU video creation failed: {str(gpu_error)}"
+                )
+                raise Exception(
+                    f"Video creation failed: GPU processing error - {str(gpu_error)}"
+                )
+        
+        # If we still don't have a video, all methods failed
+        if video_file_path is None:
+            logger.error("All video creation methods failed")
+            raise Exception("Video creation failed: no video processing available")
 
         # Update status
         last_generation_status = "completed"

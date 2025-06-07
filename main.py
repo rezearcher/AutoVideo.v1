@@ -7,6 +7,7 @@ import os
 import sys
 import threading
 import time
+import traceback
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict
@@ -288,66 +289,23 @@ def before_request():
 
 
 def initialize_app():
-    """Initialize the application and check required environment variables."""
+    """Initialize the application with all required services and clients."""
     global vertex_gpu_service, app_initialized
 
-    logger.info("Starting application initialization...")
-
-    # Log service account at startup
     try:
-        creds, project = google.auth.default()
-
-        # Try to get service account email from metadata server (more reliable in Cloud Run)
-        try:
-            import requests
-
-            metadata_url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
-            headers = {"Metadata-Flavor": "Google"}
-            response = requests.get(metadata_url, headers=headers, timeout=5)
-            if response.status_code == 200:
-                sa_email = response.text.strip()
-            else:
-                sa_email = getattr(creds, "service_account_email", "Unknown")
-        except Exception:
-            sa_email = getattr(creds, "service_account_email", "Unknown")
-
-        logger.info(f"🔑 Starting with service account: {sa_email}")
-        logger.info(f"📍 Project: {project}")
-    except Exception as e:
-        logger.error(f"❌ Could not determine service account: {e}")
-
-    try:
-        # Create necessary directories
-        logger.info("Creating application directories...")
-        os.makedirs("output", exist_ok=True)
-        os.makedirs("secrets", exist_ok=True)
-        os.makedirs("fonts", exist_ok=True)
-        logger.info("Application directories created successfully")
-
-        # Check required environment variables
-        logger.info("Checking environment variables...")
-        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-
+        # Get the current project ID
+        credentials, project_id = google.auth.default()
         if not project_id:
-            logger.warning(
-                "GOOGLE_CLOUD_PROJECT environment variable not set. Some features may not work."
-            )
-            return False
+            project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "av-8675309")
+        logger.info(f"🔍 Application starting with project: {project_id}")
 
         # Validate OpenAI API key
-        logger.info("Validating OpenAI API key...")
         openai_key = os.getenv("OPENAI_API_KEY")
         if not openai_key:
-            logger.critical("OPENAI_API_KEY is missing! Video generation will fail.")
-            return False
-        elif len(openai_key) < 20:  # Basic sanity check
-            logger.critical(
-                f"OPENAI_API_KEY appears invalid (length={len(openai_key)}). Expected longer key."
-            )
-            return False
+            logger.warning("⚠️ OPENAI_API_KEY is missing! Story generation will fail.")
         else:
             logger.info(
-                f"OPENAI_API_KEY loaded successfully (length={len(openai_key)})"
+                f"✅ OPENAI_API_KEY loaded successfully (length={len(openai_key)})"
             )
 
         # Validate other critical API keys
@@ -368,10 +326,18 @@ def initialize_app():
         try:
             from vertex_gpu_service import VertexGPUJobService
 
-            vertex_gpu_service = VertexGPUJobService(project_id=project_id)
+            bucket_name = os.getenv("VERTEX_BUCKET_NAME", f"{project_id}-video-jobs")
+            logger.info(f"Using bucket name: {bucket_name} for Vertex GPU service")
+            
+            vertex_gpu_service = VertexGPUJobService(
+                project_id=project_id,
+                region="us-central1",
+                bucket_name=bucket_name
+            )
             logger.info("✅ Global VertexGPUJobService initialized successfully")
         except Exception as gpu_error:
-            logger.warning(f"⚠️ Failed to initialize VertexGPUJobService: {gpu_error}")
+            logger.error(f"⚠️ Failed to initialize VertexGPUJobService: {str(gpu_error)}")
+            logger.error(f"⚠️ Error details: {traceback.format_exc()}")
             logger.warning(
                 "Video generation will be unavailable, but app will continue"
             )
@@ -1114,8 +1080,33 @@ def generate_video_background(topic):
             )
             logger.info(f"Video created successfully: {video_file_path}")
         else:
-            logger.error("Local video processing not available")
-            raise Exception("Video creation failed: local processing unavailable")
+            # Try to use Vertex AI GPU service as fallback if available
+            if vertex_gpu_service is not None:
+                logger.info("Local video processing not available, trying Vertex AI GPU service")
+                try:
+                    job_id = vertex_gpu_service.create_video_job(image_paths, audio_path, story)
+                    logger.info(f"Submitted Vertex AI GPU job with ID: {job_id}")
+                    
+                    # Wait for job completion with timeout
+                    status = vertex_gpu_service.wait_for_job_completion(job_id, timeout=600)
+                    
+                    if status.get("status") == "completed":
+                        # Download the video result
+                        logger.info(f"GPU job completed successfully, downloading video")
+                        if vertex_gpu_service.download_video_result(job_id, video_path):
+                            video_file_path = video_path
+                            logger.info(f"Video downloaded successfully: {video_file_path}")
+                        else:
+                            raise Exception("Failed to download video from GPU job")
+                    else:
+                        raise Exception(f"GPU job failed with status: {status.get('status')}")
+                    
+                except Exception as gpu_error:
+                    logger.error(f"Vertex AI GPU video creation failed: {str(gpu_error)}")
+                    raise Exception(f"Video creation failed: GPU processing error - {str(gpu_error)}")
+            else:
+                logger.error("Neither local nor GPU video processing available")
+                raise Exception("Video creation failed: no video processing available")
 
         # Update status
         last_generation_status = "completed"

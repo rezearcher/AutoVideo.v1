@@ -1156,6 +1156,16 @@ def reset():
     return jsonify({"status": "success", "message": "Generation state reset"})
 
 
+@app.route("/debug", methods=["GET"])
+def debug_endpoint():
+    """Debug endpoint to check deployment status."""
+    return jsonify({
+        "deployment_timestamp": "2025-06-07T18:15",
+        "generate_endpoint_implemented": True,
+        "commit_message": "Add deployment test comment to confirm code changes are being deployed"
+    })
+
+
 # Expose WSGI application for Gunicorn
 application = app
 

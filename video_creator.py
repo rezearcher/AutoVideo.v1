@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import subprocess
 import textwrap
 import time
@@ -22,6 +23,11 @@ from caption_generator import add_captions_to_video, create_caption_images
 
 # Add new imports for Veo integration
 try:
+    from google.api_core.exceptions import (
+        ResourceExhausted,
+        ServiceUnavailable,
+        TooManyRequests,
+    )
     from google.cloud import storage
     from vertexai.preview.generative_models import GenerativeModel
 
@@ -32,6 +38,10 @@ except ImportError:
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Constants for retries
+MAX_RETRIES = 3
+MAX_BACKOFF = 120  # Max backoff in seconds
 
 
 def create_video(images, voiceover_path, story, timestamp, output_path):
@@ -166,15 +176,18 @@ def create_video(images, voiceover_path, story, timestamp, output_path):
         raise
 
 
-def make_veo_clip(prompt: str, duration=8, fps=24, output_dir=None) -> str:
+def make_veo_clip(
+    prompt: str, duration=8, fps=24, output_dir=None, retries=MAX_RETRIES
+) -> str:
     """
-    Generate a video clip using Google's Veo 3 AI.
+    Generate a video clip using Google's Veo 3 AI with retry logic.
 
     Args:
         prompt (str): Detailed prompt for video generation
         duration (int): Duration in seconds (max 8 for preview)
         fps (int): Frames per second
         output_dir (str): Directory to save the video (default: "output/veo_clips")
+        retries (int): Maximum number of retry attempts
 
     Returns:
         str: Path to the generated video clip
@@ -186,46 +199,68 @@ def make_veo_clip(prompt: str, duration=8, fps=24, output_dir=None) -> str:
 
     logger.info(f"Generating Veo video clip with prompt: {prompt[:100]}...")
 
-    try:
-        # Initialize the Veo model
-        model = GenerativeModel("veo-3")
+    # Calculate max wait time for exponential backoff
+    max_wait_time = min(MAX_BACKOFF, 2 ** (retries - 1) * 15)  # 15, 30, 60, 120 seconds
 
-        # Generate the video
-        logger.info(f"Requesting {duration}s video at {fps}fps with audio...")
-        start_time = time.time()
+    for attempt in range(retries):
+        try:
+            # Initialize the Veo model
+            model = GenerativeModel("veo-3")
 
-        response = model.generate_video(
-            prompt,
-            generation_config={
-                "duration_seconds": duration,
-                "fps": fps,
-                "audio_enabled": True,
-            },
-        )
+            # Generate the video
+            logger.info(
+                f"Requesting {duration}s video at {fps}fps with audio (attempt {attempt+1}/{retries})..."
+            )
+            start_time = time.time()
 
-        generation_time = time.time() - start_time
-        logger.info(f"Video generation completed in {generation_time:.2f} seconds")
+            response = model.generate_video(
+                prompt,
+                generation_config={
+                    "duration_seconds": duration,
+                    "fps": fps,
+                    "audio_enabled": True,
+                },
+            )
 
-        # Get the video URI from the response
-        video_uri = response.resources[0].uri  # gs://... URI
+            generation_time = time.time() - start_time
+            logger.info(f"Video generation completed in {generation_time:.2f} seconds")
 
-        # Download the video from GCS
-        output_dir = output_dir or "output/veo_clips"
-        os.makedirs(output_dir, exist_ok=True)
+            # Get the video URI from the response
+            video_uri = response.resources[0].uri  # gs://... URI
 
-        # Create a unique local path
-        clip_id = uuid4().hex[:8]
-        local_path = os.path.join(output_dir, f"veo_clip_{clip_id}.mp4")
+            # Download the video from GCS
+            output_dir = output_dir or "output/veo_clips"
+            os.makedirs(output_dir, exist_ok=True)
 
-        # Download from GCS
-        blob_to_file(video_uri, local_path)
+            # Create a unique local path
+            clip_id = uuid4().hex[:8]
+            local_path = os.path.join(output_dir, f"veo_clip_{clip_id}.mp4")
 
-        logger.info(f"Veo clip saved to: {local_path}")
-        return local_path
+            # Download from GCS
+            blob_to_file(video_uri, local_path)
 
-    except Exception as e:
-        logger.error(f"Error generating Veo video: {str(e)}")
-        raise
+            logger.info(f"Veo clip saved to: {local_path}")
+            return local_path
+
+        except (ResourceExhausted, TooManyRequests, ServiceUnavailable) as quota_error:
+            if attempt < retries - 1:
+                # Calculate backoff with jitter
+                backoff = min(max_wait_time, 2**attempt * 15)
+                jitter = random.uniform(0, 0.1 * backoff)  # 10% jitter
+                wait_time = backoff + jitter
+
+                logger.warning(
+                    f"Veo API quota exceeded or service unavailable. Retrying in {wait_time:.1f} seconds. Error: {str(quota_error)}"
+                )
+                time.sleep(wait_time)
+            else:
+                logger.error(
+                    f"Veo API failed after {retries} attempts: {str(quota_error)}"
+                )
+                raise
+        except Exception as e:
+            logger.error(f"Error generating Veo video: {str(e)}")
+            raise
 
 
 def blob_to_file(gcs_uri: str, local_path: str) -> str:
@@ -425,15 +460,21 @@ def generate_scene_videos(scenes: List[Dict[str, str]], output_dir: str) -> List
 
 
 def ffmpeg_concat(
-    video_paths: List[str], output_path: str, crossfade: bool = True
+    video_paths: List[str],
+    output_path: str,
+    crossfade: bool = True,
+    color_grade: bool = True,
+    normalize_audio: bool = True,
 ) -> str:
     """
-    Concatenate multiple videos using FFmpeg with optional crossfade.
+    Concatenate multiple videos using FFmpeg with optional crossfade, color grading, and audio normalization.
 
     Args:
         video_paths (List[str]): List of video file paths
         output_path (str): Output video path
         crossfade (bool): Whether to add crossfade transitions
+        color_grade (bool): Apply color grading for more vibrant output
+        normalize_audio (bool): Apply audio loudness normalization
 
     Returns:
         str: Path to the concatenated video
@@ -442,108 +483,181 @@ def ffmpeg_concat(
         raise ValueError("No video paths provided for concatenation")
 
     if len(video_paths) == 1:
-        # If only one video, just copy it
+        # If only one video, just copy it to intermediate
         import shutil
 
-        shutil.copy(video_paths[0], output_path)
-        return output_path
+        intermediate_path = output_path.replace(".mp4", "_intermediate.mp4")
+        shutil.copy(video_paths[0], intermediate_path)
+    else:
+        # Create output directory if needed
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
-    # Create output directory if needed
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        # Intermediate file for the concatenated result
+        intermediate_path = output_path.replace(".mp4", "_intermediate.mp4")
 
-    if crossfade:
-        # With crossfade - more complex command using xfade filter
-        crossfade_duration = 0.5  # half-second crossfade
+        if crossfade:
+            # With crossfade - more complex command using xfade filter
+            crossfade_duration = 0.5  # half-second crossfade
 
-        # Generate a complex filter string for crossfades
-        filter_complex = ""
-        for i in range(len(video_paths) - 1):
-            # For each video except the last one
-            if i == 0:
-                # First video
-                filter_complex += f"[0:v][0:a]"
+            # Generate a complex filter string for crossfades
+            filter_complex = ""
+            for i in range(len(video_paths) - 1):
+                # For each video except the last one
+                if i == 0:
+                    # First video
+                    filter_complex += f"[0:v][0:a]"
 
-            # Add crossfade filter
-            next_idx = i + 1
-            filter_complex += f"[{next_idx}:v][{next_idx}:a]xfade=transition=fade:duration={crossfade_duration}:offset={7.5-crossfade_duration}"
+                # Add crossfade filter
+                next_idx = i + 1
+                filter_complex += f"[{next_idx}:v][{next_idx}:a]xfade=transition=fade:duration={crossfade_duration}:offset={7.5-crossfade_duration}"
 
-            if i < len(video_paths) - 2:
-                # Not the last crossfade, add a label
-                filter_complex += f"[v{i}][a{i}];"
-                filter_complex += f"[v{i}][a{i}]"
+                if i < len(video_paths) - 2:
+                    # Not the last crossfade, add a label
+                    filter_complex += f"[v{i}][a{i}];"
+                    filter_complex += f"[v{i}][a{i}]"
 
-        # Complete the filter
-        filter_complex += "[outv][outa]"
+            # Complete the filter
+            filter_complex += "[outv][outa]"
 
-        # Build the FFmpeg command
+            # Build the FFmpeg command
+            cmd = [
+                "ffmpeg",
+                "-y",  # Overwrite output file if it exists
+            ]
+
+            # Add input files
+            for video_path in video_paths:
+                cmd.extend(["-i", video_path])
+
+            # Add filter complex and output
+            cmd.extend(
+                [
+                    "-filter_complex",
+                    filter_complex,
+                    "-map",
+                    "[outv]",
+                    "-map",
+                    "[outa]",
+                    "-c:v",
+                    "libx264",
+                    "-crf",
+                    "23",
+                    "-preset",
+                    "medium",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "192k",
+                    intermediate_path,
+                ]
+            )
+        else:
+            # Without crossfade - simpler concatenation
+            # Create a temporary file listing all videos
+            concat_file = os.path.join(os.path.dirname(output_path), "concat_list.txt")
+            with open(concat_file, "w") as f:
+                for video_path in video_paths:
+                    f.write(f"file '{os.path.abspath(video_path)}'\n")
+
+            # Build the FFmpeg command
+            cmd = [
+                "ffmpeg",
+                "-y",  # Overwrite output file if it exists
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                concat_file,
+                "-c",
+                "copy",  # Just copy streams without re-encoding
+                intermediate_path,
+            ]
+
+        # Execute the command
+        logger.info(f"Executing FFmpeg concat: {' '.join(cmd)}")
+        process = subprocess.run(cmd, capture_output=True, text=True)
+
+        # Check for errors
+        if process.returncode != 0:
+            logger.error(f"FFmpeg error: {process.stderr}")
+            raise RuntimeError(f"FFmpeg failed with exit code {process.returncode}")
+
+        # Clean up concat file if it exists
+        if not crossfade and os.path.exists(concat_file):
+            os.remove(concat_file)
+
+    # Apply color grading if requested
+    if color_grade:
+        color_graded_path = output_path.replace(".mp4", "_graded.mp4")
         cmd = [
             "ffmpeg",
-            "-y",  # Overwrite output file if it exists
+            "-y",
+            "-i",
+            intermediate_path,
+            "-vf",
+            "eq=saturation=1.2:contrast=1.05",  # Color grading
+            "-c:a",
+            "copy",  # Copy audio without re-encoding
+            color_graded_path,
         ]
 
-        # Add input files
-        for video_path in video_paths:
-            cmd.extend(["-i", video_path])
+        logger.info(f"Applying color grading: {' '.join(cmd)}")
+        process = subprocess.run(cmd, capture_output=True, text=True)
 
-        # Add filter complex and output
-        cmd.extend(
-            [
-                "-filter_complex",
-                filter_complex,
-                "-map",
-                "[outv]",
-                "-map",
-                "[outa]",
-                "-c:v",
-                "libx264",
-                "-crf",
-                "23",
-                "-preset",
-                "medium",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "192k",
-                output_path,
-            ]
-        )
+        if process.returncode != 0:
+            logger.warning(
+                f"Color grading failed, using ungraded video: {process.stderr}"
+            )
+            color_graded_path = intermediate_path
+        else:
+            # Remove intermediate file if color grading succeeded
+            if os.path.exists(intermediate_path):
+                os.remove(intermediate_path)
     else:
-        # Without crossfade - simpler concatenation
-        # Create a temporary file listing all videos
-        concat_file = os.path.join(os.path.dirname(output_path), "concat_list.txt")
-        with open(concat_file, "w") as f:
-            for video_path in video_paths:
-                f.write(f"file '{os.path.abspath(video_path)}'\n")
+        color_graded_path = intermediate_path
 
-        # Build the FFmpeg command
+    # Apply audio normalization if requested
+    if normalize_audio:
         cmd = [
             "ffmpeg",
-            "-y",  # Overwrite output file if it exists
-            "-f",
-            "concat",
-            "-safe",
-            "0",
+            "-y",
             "-i",
-            concat_file,
-            "-c",
-            "copy",  # Just copy streams without re-encoding
+            color_graded_path,
+            "-af",
+            "loudnorm=I=-16:TP=-1.5:LRA=11",  # Audio normalization
             output_path,
         ]
 
-    # Execute the command
-    logger.info(f"Executing FFmpeg: {' '.join(cmd)}")
-    process = subprocess.run(cmd, capture_output=True, text=True)
+        logger.info(f"Applying audio normalization: {' '.join(cmd)}")
+        process = subprocess.run(cmd, capture_output=True, text=True)
 
-    # Check for errors
-    if process.returncode != 0:
-        logger.error(f"FFmpeg error: {process.stderr}")
-        raise RuntimeError(f"FFmpeg failed with exit code {process.returncode}")
+        if process.returncode != 0:
+            logger.warning(
+                f"Audio normalization failed, using unnormalized audio: {process.stderr}"
+            )
+            # If normalization fails, just copy the color-graded video
+            import shutil
 
-    # Clean up concat file if it exists
-    if not crossfade and os.path.exists(concat_file):
-        os.remove(concat_file)
+            shutil.copy(color_graded_path, output_path)
+        else:
+            # Remove color-graded intermediate if normalization succeeded
+            if (
+                os.path.exists(color_graded_path)
+                and color_graded_path != intermediate_path
+            ):
+                os.remove(color_graded_path)
+    else:
+        # If not normalizing, just rename/copy the color-graded video
+        import shutil
 
-    logger.info(f"Videos successfully concatenated to: {output_path}")
+        shutil.copy(color_graded_path, output_path)
+
+        # Clean up intermediate files
+        if os.path.exists(color_graded_path) and color_graded_path != output_path:
+            os.remove(color_graded_path)
+
+    logger.info(f"Videos successfully concatenated and processed to: {output_path}")
     return output_path
 
 
@@ -581,7 +695,13 @@ def create_veo_video(story: str, output_path: str, num_scenes: int = 5) -> str:
 
         # Step 3: Concatenate videos
         logger.info("Concatenating scene videos into final video...")
-        final_path = ffmpeg_concat(video_paths, output_path, crossfade=True)
+        final_path = ffmpeg_concat(
+            video_paths,
+            output_path,
+            crossfade=True,
+            color_grade=True,
+            normalize_audio=True,
+        )
 
         logger.info(f"Final video created: {final_path}")
         return final_path

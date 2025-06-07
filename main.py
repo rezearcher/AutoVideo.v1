@@ -1294,3 +1294,17 @@ if __name__ == "__main__":
         # Start Flask server for monitoring and manual triggers
         logger.info(f"📊 Starting Flask server on port {args.port}...")
         app.run(host="0.0.0.0", port=args.port, debug=False)
+
+# Deployment command:
+#
+# gcloud run deploy av-app \
+#   --region=us-central1 \
+#   --image=gcr.io/av-8675309/av-app:latest \
+#   --platform=managed \
+#   --memory=8Gi \
+#   --cpu=4 \
+#   --concurrency=10 \
+#   --timeout=3600 \
+#   --min-instances=1 \
+#   --set-env-vars="OPENAI_API_KEY=${OPENAI_API_KEY},ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY},LOCAL_RENDER_ALLOWED=true,LOCAL_VIDEO_PROCESSING_AVAILABLE=true,VEO_ENABLED=true" \
+#   --service-account=service-939407899550@gcp-sa-aiplatform-cc.iam.gserviceaccount.com

@@ -328,15 +328,15 @@ def initialize_app():
 
             bucket_name = os.getenv("VERTEX_BUCKET_NAME", f"{project_id}-video-jobs")
             logger.info(f"Using bucket name: {bucket_name} for Vertex GPU service")
-            
+
             vertex_gpu_service = VertexGPUJobService(
-                project_id=project_id,
-                region="us-central1",
-                bucket_name=bucket_name
+                project_id=project_id, region="us-central1", bucket_name=bucket_name
             )
             logger.info("✅ Global VertexGPUJobService initialized successfully")
         except Exception as gpu_error:
-            logger.error(f"⚠️ Failed to initialize VertexGPUJobService: {str(gpu_error)}")
+            logger.error(
+                f"⚠️ Failed to initialize VertexGPUJobService: {str(gpu_error)}"
+            )
             logger.error(f"⚠️ Error details: {traceback.format_exc()}")
             logger.warning(
                 "Video generation will be unavailable, but app will continue"
@@ -1082,28 +1082,44 @@ def generate_video_background(topic):
         else:
             # Try to use Vertex AI GPU service as fallback if available
             if vertex_gpu_service is not None:
-                logger.info("Local video processing not available, trying Vertex AI GPU service")
+                logger.info(
+                    "Local video processing not available, trying Vertex AI GPU service"
+                )
                 try:
-                    job_id = vertex_gpu_service.create_video_job(image_paths, audio_path, story)
+                    job_id = vertex_gpu_service.create_video_job(
+                        image_paths, audio_path, story
+                    )
                     logger.info(f"Submitted Vertex AI GPU job with ID: {job_id}")
-                    
+
                     # Wait for job completion with timeout
-                    status = vertex_gpu_service.wait_for_job_completion(job_id, timeout=600)
-                    
+                    status = vertex_gpu_service.wait_for_job_completion(
+                        job_id, timeout=600
+                    )
+
                     if status.get("status") == "completed":
                         # Download the video result
-                        logger.info(f"GPU job completed successfully, downloading video")
+                        logger.info(
+                            f"GPU job completed successfully, downloading video"
+                        )
                         if vertex_gpu_service.download_video_result(job_id, video_path):
                             video_file_path = video_path
-                            logger.info(f"Video downloaded successfully: {video_file_path}")
+                            logger.info(
+                                f"Video downloaded successfully: {video_file_path}"
+                            )
                         else:
                             raise Exception("Failed to download video from GPU job")
                     else:
-                        raise Exception(f"GPU job failed with status: {status.get('status')}")
-                    
+                        raise Exception(
+                            f"GPU job failed with status: {status.get('status')}"
+                        )
+
                 except Exception as gpu_error:
-                    logger.error(f"Vertex AI GPU video creation failed: {str(gpu_error)}")
-                    raise Exception(f"Video creation failed: GPU processing error - {str(gpu_error)}")
+                    logger.error(
+                        f"Vertex AI GPU video creation failed: {str(gpu_error)}"
+                    )
+                    raise Exception(
+                        f"Video creation failed: GPU processing error - {str(gpu_error)}"
+                    )
             else:
                 logger.error("Neither local nor GPU video processing available")
                 raise Exception("Video creation failed: no video processing available")
@@ -1150,11 +1166,13 @@ def reset():
 @app.route("/debug", methods=["GET"])
 def debug_endpoint():
     """Debug endpoint to check deployment status."""
-    return jsonify({
-        "deployment_timestamp": "2025-06-07T18:15",
-        "generate_endpoint_implemented": True,
-        "commit_message": "Add deployment test comment to confirm code changes are being deployed"
-    })
+    return jsonify(
+        {
+            "deployment_timestamp": "2025-06-07T18:15",
+            "generate_endpoint_implemented": True,
+            "commit_message": "Add deployment test comment to confirm code changes are being deployed",
+        }
+    )
 
 
 # Expose WSGI application for Gunicorn

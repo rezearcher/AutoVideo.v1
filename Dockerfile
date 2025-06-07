@@ -1,6 +1,8 @@
 # Build stage
 FROM python:3.11-slim as builder
 
+# Build time comment to force rebuild: 2025-06-07-04:30
+
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \

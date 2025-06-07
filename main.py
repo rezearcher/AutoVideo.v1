@@ -47,7 +47,7 @@ from youtube_uploader import upload_video
 
 # Optional import for local video processing fallback
 try:
-    from video_creator import create_video, create_veo_video, VEOAI_AVAILABLE
+    from video_creator import VEOAI_AVAILABLE, create_veo_video, create_video
 
     LOCAL_VIDEO_PROCESSING_AVAILABLE = True
     LOCAL_RENDER_ALLOWED = True
@@ -475,37 +475,39 @@ def health_check_veo():
             result["status"] = "unavailable"
             result["details"]["error"] = "Veo SDK not installed"
             return jsonify(result), 503
-        
+
         # Try to initialize the Veo model to verify permissions
         try:
             from vertexai.preview.generative_models import GenerativeModel
-            
+
             # Just attempt to load the model (won't make an API call yet)
             model = GenerativeModel("veo-3")
             result["details"]["model_init"] = "success"
-            
+
             # Try to list available models to check API connectivity
             from vertexai.preview import models
-            
+
             # Check if the model exists in the list
             try:
                 model_list = [m.name for m in models.list_models()]
                 if "veo-3" in model_list or any("veo" in m.lower() for m in model_list):
                     result["details"]["model_exists"] = True
-                    result["details"]["available_models"] = [m for m in model_list if "veo" in m.lower()]
+                    result["details"]["available_models"] = [
+                        m for m in model_list if "veo" in m.lower()
+                    ]
                 else:
                     result["details"]["model_exists"] = False
                     result["details"]["note"] = "Veo models not found in model list"
             except Exception as e:
                 result["details"]["model_list_error"] = str(e)
                 # Continue with health check even if model listing fails
-            
+
             # For a more thorough check, we could generate a tiny test video
             # but that would consume quota, so we'll skip it for health checks
-            
+
             result["status"] = "healthy"
             return jsonify(result)
-            
+
         except Exception as e:
             result["status"] = "error"
             result["details"]["model_init_error"] = str(e)
@@ -1111,7 +1113,7 @@ def generate_video_background(topic):
             audio_path = generate_google_tts(story, audio_path)
             logger.info("Generated voiceover using Google TTS fallback")
 
-        # Create video 
+        # Create video
         set_current_phase("video_creation")
         logger.info("Creating video")
         video_path = f"{output_dir}/video.mp4"
@@ -1131,22 +1133,27 @@ def generate_video_background(topic):
             video_file_path = None
 
         # If Veo failed, use local video processing if available
-        if video_file_path is None and LOCAL_VIDEO_PROCESSING_AVAILABLE and LOCAL_RENDER_ALLOWED and create_video:
+        if (
+            video_file_path is None
+            and LOCAL_VIDEO_PROCESSING_AVAILABLE
+            and LOCAL_RENDER_ALLOWED
+            and create_video
+        ):
             logger.info("Creating video using local processing")
             try:
                 video_file_path = create_video(
                     image_paths, audio_path, story, timestamp, video_path
                 )
-                logger.info(f"Video created successfully with local processing: {video_file_path}")
+                logger.info(
+                    f"Video created successfully with local processing: {video_file_path}"
+                )
             except Exception as local_error:
                 logger.error(f"Local video processing failed: {str(local_error)}")
                 video_file_path = None
 
         # If both Veo and local processing failed, try Vertex AI GPU service as last resort
         if video_file_path is None and vertex_gpu_service is not None:
-            logger.info(
-                "Trying Vertex AI GPU service as last resort"
-            )
+            logger.info("Trying Vertex AI GPU service as last resort")
             try:
                 job_id = vertex_gpu_service.create_video_job(
                     image_paths, audio_path, story
@@ -1154,20 +1161,14 @@ def generate_video_background(topic):
                 logger.info(f"Submitted Vertex AI GPU job with ID: {job_id}")
 
                 # Wait for job completion with timeout
-                status = vertex_gpu_service.wait_for_job_completion(
-                    job_id, timeout=600
-                )
+                status = vertex_gpu_service.wait_for_job_completion(job_id, timeout=600)
 
                 if status.get("status") == "completed":
                     # Download the video result
-                    logger.info(
-                        f"GPU job completed successfully, downloading video"
-                    )
+                    logger.info(f"GPU job completed successfully, downloading video")
                     if vertex_gpu_service.download_video_result(job_id, video_path):
                         video_file_path = video_path
-                        logger.info(
-                            f"Video downloaded successfully: {video_file_path}"
-                        )
+                        logger.info(f"Video downloaded successfully: {video_file_path}")
                     else:
                         raise Exception("Failed to download video from GPU job")
                 else:
@@ -1176,13 +1177,11 @@ def generate_video_background(topic):
                     )
 
             except Exception as gpu_error:
-                logger.error(
-                    f"Vertex AI GPU video creation failed: {str(gpu_error)}"
-                )
+                logger.error(f"Vertex AI GPU video creation failed: {str(gpu_error)}")
                 raise Exception(
                     f"Video creation failed: GPU processing error - {str(gpu_error)}"
                 )
-        
+
         # If we still don't have a video, all methods failed
         if video_file_path is None:
             logger.error("All video creation methods failed")

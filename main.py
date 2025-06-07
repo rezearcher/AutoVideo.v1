@@ -1,5 +1,6 @@
 # Auto Video Generator - Cloud Native
-# Updated: 2025-05-28 - GPU compatibility fixes included
+# Updated: 2025-06-07 - DEPLOYMENT TEST WITH MODIFIED GENERATE ENDPOINT
+# Previous: 2025-05-28 - GPU compatibility fixes included
 import json
 import logging
 import os

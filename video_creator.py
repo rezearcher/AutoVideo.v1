@@ -177,16 +177,23 @@ def create_video(images, voiceover_path, story, timestamp, output_path):
 
 
 def make_veo_clip(
-    prompt: str, duration=8, fps=24, output_dir=None, retries=MAX_RETRIES
+    prompt: str,
+    duration_sec: int = 8,
+    aspect: str = "16:9",
+    output_dir: str = None,
+    bucket: str = os.environ.get("VERTEX_BUCKET_NAME", ""),
+    retries: int = MAX_RETRIES,
 ) -> str:
     """
     Generate a video clip using Google's Veo 3 AI with retry logic.
+    Uses LRO (Long Running Operation) as per official Google documentation.
 
     Args:
         prompt (str): Detailed prompt for video generation
-        duration (int): Duration in seconds (max 8 for preview)
-        fps (int): Frames per second
+        duration_sec (int): Duration in seconds (must be 5-8s for Veo 3)
+        aspect (str): Aspect ratio (16:9 is the only supported ratio for Veo 3)
         output_dir (str): Directory to save the video (default: "output/veo_clips")
+        bucket (str): GCS bucket to store temporary files
         retries (int): Maximum number of retry attempts
 
     Returns:
@@ -197,36 +204,52 @@ def make_veo_clip(
             "Vertex AI Video Generation (Veo) is not available. Install required packages."
         )
 
+    # Validate duration (Veo 3 only supports 5-8 seconds)
+    if duration_sec not in range(5, 9):
+        raise ValueError("Veo 3 only supports 5-8 second videos")
+
+    # Ensure we have a bucket configured
+    if not bucket:
+        raise ValueError(
+            "No GCS bucket configured. Set VERTEX_BUCKET_NAME environment variable."
+        )
+
     logger.info(f"Generating Veo video clip with prompt: {prompt[:100]}...")
 
     # Calculate max wait time for exponential backoff
-    max_wait_time = min(MAX_BACKOFF, 2 ** (retries - 1) * 15)  # 15, 30, 60, 120 seconds
+    max_wait_time = min(MAX_BACKOFF, 2 ** (retries - 1) * 15)
 
     for attempt in range(retries):
         try:
             # Initialize the Veo model
-            model = GenerativeModel("veo-3")
+            model = GenerativeModel("veo-3.0-generate-preview")
 
-            # Generate the video
+            # Generate the video using async LRO pattern
             logger.info(
-                f"Requesting {duration}s video at {fps}fps with audio (attempt {attempt+1}/{retries})..."
+                f"Requesting {duration_sec}s video with aspect ratio {aspect} (attempt {attempt+1}/{retries})..."
             )
             start_time = time.time()
 
-            response = model.generate_video(
-                prompt,
+            # Launch async operation
+            operation = model.generate_video_async(
+                prompt=prompt,
                 generation_config={
-                    "duration_seconds": duration,
-                    "fps": fps,
-                    "audio_enabled": True,
+                    "durationSeconds": duration_sec,
+                    "aspectRatio": aspect,
+                    "sampleCount": 1,  # Must be explicitly set per Google docs
                 },
+                output_storage=f"gs://{bucket}/veo-temp/",
             )
+
+            # Poll for result with timeout (15 minutes max)
+            logger.info("Video generation operation started, waiting for completion...")
+            response = operation.result(timeout=900)  # 15 minute timeout
 
             generation_time = time.time() - start_time
             logger.info(f"Video generation completed in {generation_time:.2f} seconds")
 
             # Get the video URI from the response
-            video_uri = response.resources[0].uri  # gs://... URI
+            gcs_uri = response.videos[0].gcs_uri
 
             # Download the video from GCS
             output_dir = output_dir or "output/veo_clips"
@@ -236,8 +259,9 @@ def make_veo_clip(
             clip_id = uuid4().hex[:8]
             local_path = os.path.join(output_dir, f"veo_clip_{clip_id}.mp4")
 
-            # Download from GCS
-            blob_to_file(video_uri, local_path)
+            # Download from GCS to local file
+            storage_client = storage.Client()
+            storage_client.download_blob_to_file(gcs_uri, open(local_path, "wb"))
 
             logger.info(f"Veo clip saved to: {local_path}")
             return local_path
@@ -261,41 +285,6 @@ def make_veo_clip(
         except Exception as e:
             logger.error(f"Error generating Veo video: {str(e)}")
             raise
-
-
-def blob_to_file(gcs_uri: str, local_path: str) -> str:
-    """
-    Download a file from Google Cloud Storage to local filesystem.
-
-    Args:
-        gcs_uri (str): GCS URI (gs://bucket-name/path/to/file)
-        local_path (str): Local file path to save the file
-
-    Returns:
-        str: Local file path
-    """
-    # Parse the GCS URI
-    if not gcs_uri.startswith("gs://"):
-        raise ValueError(f"Invalid GCS URI: {gcs_uri}")
-
-    # Remove the gs:// prefix and split into bucket and blob
-    path = gcs_uri[5:]
-    bucket_name, blob_path = path.split("/", 1)
-
-    # Initialize storage client
-    client = storage.Client()
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_path)
-
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(os.path.abspath(local_path)), exist_ok=True)
-
-    # Download the file
-    logger.info(f"Downloading {gcs_uri} to {local_path}...")
-    blob.download_to_filename(local_path)
-
-    logger.info(f"Download complete: {local_path}")
-    return local_path
 
 
 def enhance_story_for_video_scenes(
@@ -324,8 +313,10 @@ def enhance_story_for_video_scenes(
         1. A specific camera movement (dolly, pan, tilt, crane, steadicam)
         2. Lighting description (warm, cool, golden hour, moody, etc.)
         3. Specific visual elements to include
-        4. A single short line of dialogue (5-7 words) if appropriate
+        4. A single short line of dialogue (EXACTLY 7 WORDS OR FEWER) if appropriate
         5. Style/mood description
+        
+        IMPORTANT: Dialogue MUST be 7 words or fewer. This is a strict technical limitation.
         
         Format as a JSON array of objects with these properties: "scene_description", "camera", "lighting", "dialogue", "style"
         
@@ -339,7 +330,7 @@ def enhance_story_for_video_scenes(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an expert cinematographer who creates detailed, Veo-optimized scene prompts. Format your output strictly as valid JSON, nothing else.",
+                    "content": "You are an expert cinematographer who creates detailed, Veo-optimized scene prompts. Format your output strictly as valid JSON, nothing else. All dialogue MUST be 7 words or fewer.",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -353,6 +344,17 @@ def enhance_story_for_video_scenes(
         # Ensure we have valid scene data
         if not scenes or not isinstance(scenes, list):
             raise ValueError("Failed to generate valid scene data")
+
+        # Enforce dialogue length limit
+        for scene in scenes:
+            if scene.get("dialogue"):
+                # Count words and truncate if needed
+                words = scene["dialogue"].split()
+                if len(words) > 7:
+                    scene["dialogue"] = " ".join(words[:7])
+                    logger.warning(
+                        f"Truncated dialogue to 7 words: {scene['dialogue']}"
+                    )
 
     except Exception as e:
         logger.warning(f"Error generating enhanced scene prompts: {str(e)}")
@@ -415,9 +417,18 @@ def enhance_story_for_video_scenes(
         Lighting: {scene['lighting']}.
         """
 
-        # Only add dialogue if it exists and isn't empty
+        # Only add dialogue if it exists, isn't empty, and is within length limit
         if scene.get("dialogue") and len(scene["dialogue"]) > 0:
-            veo_prompt += f"Audio: ambient sounds, one line of dialogue: \"{scene['dialogue']}\". "
+            # Double-check dialogue length (≤7 words)
+            words = scene["dialogue"].split()
+            if len(words) <= 7:
+                veo_prompt += f"Audio: ambient sounds, one line of dialogue: \"{scene['dialogue']}\". "
+            else:
+                # Truncate if somehow it's still too long
+                dialogue = " ".join(words[:7])
+                veo_prompt += (
+                    f'Audio: ambient sounds, one line of dialogue: "{dialogue}". '
+                )
         else:
             veo_prompt += "Audio: ambient sounds that match the scene. "
 
@@ -446,8 +457,8 @@ def generate_scene_videos(scenes: List[Dict[str, str]], output_dir: str) -> List
         try:
             video_path = make_veo_clip(
                 prompt=scene["veo_prompt"],
-                duration=8,  # 8 seconds is the max for preview
-                fps=24,
+                duration_sec=8,  # 8 seconds is the max for preview
+                aspect="16:9",
                 output_dir=output_dir,
             )
             video_paths.append(video_path)

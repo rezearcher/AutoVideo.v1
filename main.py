@@ -47,17 +47,32 @@ from youtube_uploader import upload_video
 
 # Optional import for local video processing fallback
 try:
-    from video_creator import VEOAI_AVAILABLE, create_veo_video, create_video
+    from video_creator import create_video
 
     LOCAL_VIDEO_PROCESSING_AVAILABLE = True
-    LOCAL_RENDER_ALLOWED = True
+    LOCAL_RENDER_ALLOWED = (
+        os.environ.get("LOCAL_RENDER_ALLOWED", "false").lower() == "true"
+    )
 except ImportError as e:
     LOCAL_VIDEO_PROCESSING_AVAILABLE = False
     LOCAL_RENDER_ALLOWED = False
     logging.warning(f"Local video processing not available: {e}")
     create_video = None
-    create_veo_video = None
+
+# Optional import for Veo AI video generation
+try:
+    if os.environ.get("VEO_ENABLED", "false").lower() == "true":
+        from video_creator import VEOAI_AVAILABLE, create_veo_video
+
+        logging.info("Veo AI video generation enabled")
+    else:
+        VEOAI_AVAILABLE = False
+        create_veo_video = None
+        logging.info("Veo AI video generation disabled by environment variable")
+except ImportError as e:
     VEOAI_AVAILABLE = False
+    create_veo_video = None
+    logging.warning(f"Veo AI video generation not available: {e}")
 
 # Google Cloud Monitoring imports
 try:
@@ -481,7 +496,7 @@ def health_check_veo():
             from vertexai.preview.generative_models import GenerativeModel
 
             # Just attempt to load the model (won't make an API call yet)
-            model = GenerativeModel("veo-3")
+            model = GenerativeModel("veo-3.0-generate-preview")
             result["details"]["model_init"] = "success"
 
             # Try to list available models to check API connectivity
@@ -490,11 +505,13 @@ def health_check_veo():
             # Check if the model exists in the list
             try:
                 model_list = [m.name for m in models.list_models()]
-                if "veo-3" in model_list or any("veo" in m.lower() for m in model_list):
+                veo_models = [m for m in model_list if "veo" in m.lower()]
+
+                if "veo-3.0-generate-preview" in model_list or any(
+                    "veo" in m.lower() for m in model_list
+                ):
                     result["details"]["model_exists"] = True
-                    result["details"]["available_models"] = [
-                        m for m in model_list if "veo" in m.lower()
-                    ]
+                    result["details"]["available_models"] = veo_models
                 else:
                     result["details"]["model_exists"] = False
                     result["details"]["note"] = "Veo models not found in model list"
@@ -502,8 +519,29 @@ def health_check_veo():
                 result["details"]["model_list_error"] = str(e)
                 # Continue with health check even if model listing fails
 
-            # For a more thorough check, we could generate a tiny test video
-            # but that would consume quota, so we'll skip it for health checks
+            # Check if VERTEX_BUCKET_NAME is set
+            bucket_name = os.environ.get("VERTEX_BUCKET_NAME")
+            if bucket_name:
+                result["details"]["bucket_configured"] = True
+                result["details"]["bucket_name"] = bucket_name
+
+                # Check bucket permissions
+                try:
+                    from google.cloud import storage
+
+                    storage_client = storage.Client()
+                    bucket = storage_client.bucket(bucket_name)
+                    if bucket.exists():
+                        result["details"]["bucket_exists"] = True
+                    else:
+                        result["details"]["bucket_exists"] = False
+                except Exception as e:
+                    result["details"]["bucket_error"] = str(e)
+            else:
+                result["details"]["bucket_configured"] = False
+                result["details"][
+                    "note"
+                ] = "VERTEX_BUCKET_NAME environment variable not set"
 
             result["status"] = "healthy"
             return jsonify(result)

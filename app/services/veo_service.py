@@ -4,7 +4,7 @@ import os
 import subprocess
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
@@ -75,6 +75,33 @@ class VeoService:
                 logger.warning("No GCP project ID set, cannot check token usage")
                 return 0
 
+            # Check if gcloud monitoring is available
+            check_cmd = ["gcloud", "help", "monitoring"]
+            check_result = subprocess.run(
+                check_cmd, capture_output=True, text=True, check=False
+            )
+
+            if (
+                check_result.returncode != 0
+                or "ERROR: (gcloud.monitoring)" in check_result.stderr
+            ):
+                logger.warning("gcloud monitoring not available in this environment")
+                return 0
+
+            # Check if time-series command is available
+            cmd = ["gcloud", "monitoring", "time-series", "--help"]
+            help_result = subprocess.run(
+                cmd, capture_output=True, text=True, check=False
+            )
+
+            if (
+                help_result.returncode != 0
+                or "Invalid choice: 'time-series'" in help_result.stderr
+            ):
+                logger.warning("gcloud monitoring time-series not available")
+                return 0
+
+            # Now try to get the token usage
             cmd = [
                 "gcloud",
                 "monitoring",
@@ -128,7 +155,7 @@ class VeoService:
                 return True
 
             # Wait until the start of the next minute for quota reset
-            current_second = datetime.utcnow().second
+            current_second = datetime.now(timezone.utc).second
             sleep_time = 60 - current_second + 1
 
             logger.info(

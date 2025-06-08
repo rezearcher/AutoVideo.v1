@@ -10,7 +10,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add the project root to the path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,6 +23,39 @@ except ImportError:
     sys.exit(1)
 
 
+def check_monitoring_available():
+    """Check if gcloud monitoring is available in this environment."""
+    try:
+        # Check if gcloud monitoring is available
+        check_cmd = ["gcloud", "help", "monitoring"]
+        check_result = subprocess.run(
+            check_cmd, capture_output=True, text=True, check=False
+        )
+
+        if (
+            check_result.returncode != 0
+            or "ERROR: (gcloud.monitoring)" in check_result.stderr
+        ):
+            print("⚠️ gcloud monitoring not available in this environment")
+            return False
+
+        # Check if time-series command is available
+        cmd = ["gcloud", "monitoring", "time-series", "--help"]
+        help_result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+        if (
+            help_result.returncode != 0
+            or "Invalid choice: 'time-series'" in help_result.stderr
+        ):
+            print("⚠️ gcloud monitoring time-series not available in this environment")
+            return False
+
+        return True
+    except Exception as e:
+        print(f"⚠️ Error checking monitoring availability: {e}")
+        return False
+
+
 def get_tokens_in_use():
     """
     Get the current number of tokens in use for Veo API.
@@ -32,6 +65,10 @@ def get_tokens_in_use():
         Current token usage (0 if unable to determine)
     """
     try:
+        if not check_monitoring_available():
+            print("ℹ️ Monitoring not available, cannot check real-time token usage")
+            return 0
+
         project_id = os.environ.get("GCP_PROJECT", settings.GCP_PROJECT)
         if not project_id:
             print("❌ No GCP project ID set. Set GCP_PROJECT environment variable.")
@@ -74,6 +111,10 @@ def watch_token_usage(interval=5, max_minutes=5):
         interval: Refresh interval in seconds
         max_minutes: Maximum minutes to watch
     """
+    if not check_monitoring_available():
+        print("❌ Cannot watch token usage - gcloud monitoring not available")
+        return
+
     max_tokens_per_minute = int(os.environ.get("VEO_LIMIT_MPM", settings.VEO_LIMIT_MPM))
 
     print(
@@ -144,17 +185,21 @@ def check_quotas():
 
     # Display current token usage
     tokens_in_use = get_tokens_in_use()
-    max_tokens_per_minute = int(os.environ.get("VEO_LIMIT_MPM", settings.VEO_LIMIT_MPM))
-
-    print(
-        f"\nCurrent Token Usage: {tokens_in_use}/{max_tokens_per_minute} tokens per minute"
-    )
-
-    # Recommendation
-    if tokens_in_use > (max_tokens_per_minute * 0.8):
-        print(
-            "\n⚠️ High token usage detected. Consider waiting before making new requests."
+    if tokens_in_use > 0:
+        max_tokens_per_minute = int(
+            os.environ.get("VEO_LIMIT_MPM", settings.VEO_LIMIT_MPM)
         )
+        print(
+            f"\nCurrent Token Usage: {tokens_in_use}/{max_tokens_per_minute} tokens per minute"
+        )
+
+        # Recommendation
+        if tokens_in_use > (max_tokens_per_minute * 0.8):
+            print(
+                "\n⚠️ High token usage detected. Consider waiting before making new requests."
+            )
+    else:
+        print("\nCurrent Token Usage: Not available (monitoring API not accessible)")
 
     # Request a quota increase if needed
     if quota_details.get("daily_usage", 0) > (

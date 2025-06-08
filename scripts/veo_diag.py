@@ -224,38 +224,30 @@ def check_api_connection() -> bool:
             or os.environ.get("GOOGLE_CLOUD_PROJECT", "av-8675309") + "-video-jobs"
         )
 
-        # Try to use the model's generate_video_async method
-        try:
-            # First check if the method exists
-            if not hasattr(model, "generate_video_async"):
-                results["api_checks"]["details"]["generate_video_async"] = {
-                    "status": "warning",
-                    "message": "Method not available in this version of Veo SDK",
-                }
-                logger.error(
-                    f"✗ generate_video_async error: 'GenerativeModel' object has no attribute 'generate_video_async'"
-                )
+        # Check if the method exists
+        if not hasattr(model, "generate_video_async"):
+            results["api_checks"]["details"]["generate_video_async"] = {
+                "status": "warning",
+                "message": "Method not available in this version of Veo SDK",
+            }
+            logger.error(
+                f"✗ generate_video_async error: 'GenerativeModel' object has no attribute 'generate_video_async'"
+            )
 
-                # Use regular generate method instead for diagnostic purposes
-                response = model.generate_content(
-                    prompt,
-                    generation_config=GenerationConfig(
-                        temperature=0.1,
-                        top_p=0.8,
-                        top_k=40,
-                        candidate_count=1,
-                    ),
-                )
+            # Add specific recommendation for this case
+            results["api_checks"]["details"][
+                "recommendation"
+            ] = "Update to a newer version of google-cloud-aiplatform[preview] (at least 1.36.4)"
+            results["api_checks"]["status"] = "warning"
 
-                results["api_checks"]["details"]["generate_content"] = {
-                    "status": "success",
-                    "message": "Generated content successfully as fallback",
-                }
-                logger.info("✓ generate_content fallback succeeded")
-                results["api_checks"]["status"] = "warning"
-                return True
-            else:
-                # Try to initiate the async call but don't wait for result
+            # Don't try the text generation fallback, just return since we know what the issue is
+            elapsed = time.time() - start_time
+            results["api_checks"]["details"]["api_latency_sec"] = round(elapsed, 2)
+            logger.info(f"API call completed in {elapsed:.2f}s")
+            return True
+        else:
+            # Try to initiate the async call but don't wait for result
+            try:
                 operation = model.generate_video_async(
                     prompt=prompt,
                     generation_config=GenerationConfig(
@@ -276,39 +268,87 @@ def check_api_connection() -> bool:
                         "status": "success",
                         "operation_name": operation.operation.name,
                     }
+                    results["api_checks"]["status"] = "success"
+                    return True
                 else:
                     logger.error("✗ Operation created but no operation ID returned")
                     results["api_checks"]["details"]["generate_video_async"] = {
                         "status": "warning",
                         "error": "No operation ID returned",
                     }
-        except Exception as e:
-            logger.error(f"✗ Video generation API error: {e}")
-            results["api_checks"]["details"]["api_error"] = str(e)
+            except Exception as e:
+                error_str = str(e)
+                logger.error(f"✗ Video generation API error: {e}")
+                results["api_checks"]["details"]["api_error"] = error_str
 
-            # Try to at least check if the model works for text generation
-            try:
-                response = model.generate_content(prompt)
-                results["api_checks"]["details"]["generate_content"] = {
-                    "status": "success",
-                    "message": "Generated content successfully as fallback",
-                }
-                logger.info("✓ generate_content fallback succeeded")
-                results["api_checks"]["status"] = "warning"
-                return True
-            except Exception as text_e:
-                results["api_checks"]["details"]["generate_content"] = {
-                    "status": "failure",
-                    "error": str(text_e),
-                }
-                logger.error(f"✗ Text generation fallback also failed: {text_e}")
+                # Handle quota errors specifically
+                if "429" in error_str and "Quota exceeded" in error_str:
+                    results["api_checks"]["details"]["quota_error"] = True
+                    results["api_checks"]["details"][
+                        "recommendation"
+                    ] = "Request a quota increase for the Veo API: https://cloud.google.com/vertex-ai/docs/generative-ai/quotas-genai"
+                    # This isn't a critical failure - the API connection is working but quota is exceeded
+                    results["api_checks"]["status"] = "warning"
+                    elapsed = time.time() - start_time
+                    results["api_checks"]["details"]["api_latency_sec"] = round(
+                        elapsed, 2
+                    )
+                    logger.info(f"API call completed in {elapsed:.2f}s")
+                    return True
+
+                # If not a quota error, try text generation as a fallback test
+                try:
+                    # Use a minimal request to reduce quota usage
+                    response = model.generate_content(
+                        prompt,
+                        generation_config=GenerationConfig(
+                            max_output_tokens=1,
+                            temperature=0.1,
+                        ),
+                    )
+                    results["api_checks"]["details"]["generate_content"] = {
+                        "status": "success",
+                        "message": "Generated content successfully as fallback",
+                    }
+                    logger.info("✓ generate_content fallback succeeded")
+                    results["api_checks"]["status"] = "warning"
+                    elapsed = time.time() - start_time
+                    results["api_checks"]["details"]["api_latency_sec"] = round(
+                        elapsed, 2
+                    )
+                    logger.info(f"API call completed in {elapsed:.2f}s")
+                    return True
+                except Exception as text_e:
+                    text_error = str(text_e)
+                    results["api_checks"]["details"]["generate_content"] = {
+                        "status": "failure",
+                        "error": text_error,
+                    }
+                    logger.error(f"✗ Text generation fallback also failed: {text_e}")
+
+                    # Also handle quota errors for text generation
+                    if "429" in text_error and "Quota exceeded" in text_error:
+                        results["api_checks"]["details"]["quota_error"] = True
+                        results["api_checks"]["details"][
+                            "recommendation"
+                        ] = "Request a quota increase for the Veo API: https://cloud.google.com/vertex-ai/docs/generative-ai/quotas-genai"
+                        # This isn't a critical failure - the API connection is working but quota is exceeded
+                        results["api_checks"]["status"] = "warning"
+                        elapsed = time.time() - start_time
+                        results["api_checks"]["details"]["api_latency_sec"] = round(
+                            elapsed, 2
+                        )
+                        logger.info(f"API call completed in {elapsed:.2f}s")
+                        return True
 
         # Record timing
         elapsed = time.time() - start_time
         results["api_checks"]["details"]["api_latency_sec"] = round(elapsed, 2)
         logger.info(f"API call completed in {elapsed:.2f}s")
 
-        results["api_checks"]["status"] = "success"
+        # Default status if we get here
+        if "status" not in results["api_checks"]:
+            results["api_checks"]["status"] = "success"
         return True
 
     except Exception as e:
@@ -369,12 +409,30 @@ def check_storage_access() -> bool:
                 logger.error(f"✗ Bucket access error: {e}")
                 results["storage_checks"]["details"]["bucket_error"] = str(e)
 
-                # Suggest creating the bucket
-                project_id = client.project
-                results["storage_checks"]["details"][
-                    "create_command"
-                ] = f"gsutil mb -p {project_id} -l us-central1 gs://{bucket_name}"
-                results["storage_checks"]["details"]["bucket_creation_needed"] = True
+                # Get list of available buckets to suggest the right one
+                try:
+                    buckets = list(client.list_buckets())
+                    video_job_buckets = [b.name for b in buckets if "video" in b.name]
+
+                    if video_job_buckets:
+                        results["storage_checks"]["details"][
+                            "available_buckets"
+                        ] = video_job_buckets
+                        results["storage_checks"]["details"][
+                            "suggestion"
+                        ] = f"Try using one of these buckets: {', '.join(video_job_buckets)}"
+                        results["storage_checks"]["details"][
+                            "create_command"
+                        ] = f"gsutil mb -p {client.project} -l us-central1 gs://{bucket_name}"
+                    else:
+                        results["storage_checks"]["details"][
+                            "create_command"
+                        ] = f"gsutil mb -p {client.project} -l us-central1 gs://{bucket_name}"
+                except Exception:
+                    # Fall back to simple command if listing buckets fails
+                    results["storage_checks"]["details"][
+                        "create_command"
+                    ] = f"gsutil mb -p {client.project} -l us-central1 gs://{bucket_name}"
 
                 results["storage_checks"]["status"] = "failure"
                 return False
@@ -426,8 +484,13 @@ def run_diagnostics() -> Dict[str, Any]:
     # Add recommended actions
     results["overall"]["recommendations"] = []
 
+    # Storage recommendations
     if not storage_ok:
-        if results["storage_checks"]["details"].get("bucket_creation_needed"):
+        if "suggestion" in results["storage_checks"]["details"]:
+            results["overall"]["recommendations"].append(
+                results["storage_checks"]["details"]["suggestion"]
+            )
+        elif "create_command" in results["storage_checks"]["details"]:
             cmd = results["storage_checks"]["details"].get("create_command", "")
             results["overall"]["recommendations"].append(
                 f"Create a GCS bucket with: {cmd}"
@@ -437,7 +500,12 @@ def run_diagnostics() -> Dict[str, Any]:
                 "Set VERTEX_BUCKET_NAME environment variable and ensure the bucket exists"
             )
 
-    if not api_ok:
+    # API recommendations
+    if "recommendation" in results["api_checks"]["details"]:
+        results["overall"]["recommendations"].append(
+            results["api_checks"]["details"]["recommendation"]
+        )
+    elif not api_ok:
         api_details = results["api_checks"]["details"]
         if "generate_video_async" in str(api_details.get("error", "")):
             results["overall"]["recommendations"].append(
@@ -447,12 +515,18 @@ def run_diagnostics() -> Dict[str, Any]:
             results["overall"]["recommendations"].append(
                 "Set GOOGLE_CLOUD_PROJECT environment variable"
             )
+        elif "quota_error" in api_details and api_details["quota_error"]:
+            results["overall"]["recommendations"].append(
+                "Request a quota increase for the Veo API: https://cloud.google.com/vertex-ai/docs/generative-ai/quotas-genai"
+            )
 
+    # Auth recommendations
     if auth_ok == False or results["auth_checks"]["status"] == "warning":
         results["overall"]["recommendations"].append(
             "Set GOOGLE_APPLICATION_CREDENTIALS environment variable to your service account key"
         )
 
+    # Python version recommendations
     if (
         "python_version" in results["dependency_checks"]["details"]
         and "not recommended"
@@ -461,6 +535,11 @@ def run_diagnostics() -> Dict[str, Any]:
         results["overall"]["recommendations"].append(
             "Use Python 3.11 instead of current Python version for best compatibility"
         )
+
+    # Remove any duplicates
+    results["overall"]["recommendations"] = list(
+        set(results["overall"]["recommendations"])
+    )
 
     logger.info(f"Diagnostics complete: {results['overall']['summary']}")
     return results

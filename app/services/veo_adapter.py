@@ -31,7 +31,7 @@ def make_clip(prompt: str, seconds: int = 8) -> str:
         raise RuntimeError(
             "The GenerativeModel does not have the generate_video_async method. "
             "This could be because you're using an older version of the SDK. "
-            "Try updating with: pip install -U google-cloud-aiplatform[preview]"
+            "Try updating with: pip install -U google-cloud-aiplatform[preview]>=1.36.4"
         )
 
     # Make sure we have a bucket configured

@@ -252,10 +252,11 @@ jobs:
           --cpu=2
           --concurrency=80
           --timeout=300s
-          --set-env-vars=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }},PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }},YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }},YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }},YOUTUBE_PROJECT_ID=${{ secrets.YOUTUBE_PROJECT_ID }},GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},VERTEX_BUCKET_NAME=${{ secrets.VERTEX_BUCKET_NAME }},YOUTUBE_ENABLED=true,ENVIRONMENT=production
+          --set-env-vars=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }},PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }},YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }},YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }},YOUTUBE_PROJECT_ID=${{ secrets.YOUTUBE_PROJECT_ID }},GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},VERTEX_BUCKET_NAME=${{ secrets.VERTEX_BUCKET_NAME }},YOUTUBE_ENABLED=true,ENVIRONMENT=production,VEO_ENABLED=true,LOCAL_RENDER_ALLOWED=true
           --use-http2
           --port=8080
           --allow-unauthenticated
+          --traffic=100
 
     - name: Get Cloud Run URL
       id: deploy

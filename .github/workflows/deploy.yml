@@ -256,7 +256,6 @@ jobs:
           --use-http2
           --port=8080
           --allow-unauthenticated
-          --traffic=100
 
     - name: Get Cloud Run URL
       id: deploy
@@ -264,6 +263,14 @@ jobs:
         SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')
         echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
         echo "🌐 Service URL: $SERVICE_URL"
+
+    - name: Update traffic to new revision
+      run: |
+        # Get the latest revision name
+        LATEST_REVISION=$(gcloud run revisions list --service=$SERVICE_NAME --region=$REGION --sort-by=~metadata.creationTimestamp --limit=1 --format="value(metadata.name)")
+        echo "🔄 Updating traffic to route 100% to $LATEST_REVISION"
+        gcloud run services update-traffic $SERVICE_NAME --region=$REGION --to-revisions=$LATEST_REVISION=100
+        echo "✅ Traffic updated successfully"
 
     - name: Main app deployment summary
       run: |

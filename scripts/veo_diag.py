@@ -40,16 +40,25 @@ else:
 # ---------- 3. model ping ----------
 try:
     model = GenerativeModel("veo-3.0-generate-preview")
-    op = model.generate_video_async(
-        "ping", generation_config=GenerationConfig(
-            duration_seconds=5, aspect_ratio="16:9",
-            sample_count=1, return_raw_tokens=True
+    try:
+        # Use the same method that's used in video_creator.py
+        op = model.generate_video_async(
+            prompt="ping",
+            generation_config={
+                "durationSeconds": 5,
+                "aspectRatio": "16:9",
+                "sampleCount": 1,  # Must be explicitly set per Google docs
+            },
+            output_storage=f"gs://{BKT}/veo-diag/" if BKT else None,
         )
-    )
-    op.result(timeout=120)
-    ok("api", "veo_generate_async")
+        # Don't wait for completion to avoid token use
+        ok("api", "veo_generate_video_async")
+    except AttributeError as ae:
+        fail("api", "veo_api_method", f"Method 'generate_video_async' not found: {ae}")
+    except Exception as e:
+        fail("api", "veo_generation", str(e))
 except Exception as e:
-    fail("api", "veo_generate_async", e)
+    fail("api", "veo_model_init", str(e))
 
 # ---------- 4. storage ----------
 BKT = os.getenv("VERTEX_BUCKET_NAME")

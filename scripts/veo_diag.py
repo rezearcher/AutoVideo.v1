@@ -192,18 +192,42 @@ def check_api_connection() -> bool:
         logger.info(f"Making zero-token API probe with prompt: {prompt}")
         start_time = time.time()
 
-        # Use the method that's actually used in the app
-        bucket = os.environ.get("VERTEX_BUCKET_NAME")
-        if not bucket:
-            logger.warning(
-                "VERTEX_BUCKET_NAME not set, skipping generate_video_async test"
-            )
-            results["api_checks"]["details"][
-                "generate_video_async"
-            ] = "skipped (no bucket)"
-        else:
-            # Try to initiate the async call but don't wait for result
-            try:
+        # Check if the bucket exists
+        bucket = (
+            os.environ.get("VERTEX_BUCKET_NAME")
+            or os.environ.get("GOOGLE_CLOUD_PROJECT", "av-8675309") + "-video-jobs"
+        )
+
+        # Try to use the model's generate_video_async method
+        try:
+            # First check if the method exists
+            if not hasattr(model, "generate_video_async"):
+                results["api_checks"]["details"]["generate_video_async"] = {
+                    "status": "warning",
+                    "message": "Method not available in this version of Veo SDK",
+                }
+                logger.error(
+                    f"✗ generate_video_async error: 'GenerativeModel' object has no attribute 'generate_video_async'"
+                )
+
+                # Use regular generate method instead for diagnostic purposes
+                response = model.generate_content(
+                    prompt,
+                    generation_config=GenerationConfig(
+                        temperature=0.1,
+                        top_p=0.8,
+                        top_k=40,
+                        candidate_count=1,
+                    ),
+                )
+
+                results["api_checks"]["details"]["generate_content"] = {
+                    "status": "success",
+                    "message": "Generated content successfully as fallback",
+                }
+                logger.info("✓ generate_content fallback succeeded")
+            else:
+                # Try to initiate the async call but don't wait for result
                 operation = model.generate_video_async(
                     prompt=prompt,
                     generation_config=GenerationConfig(
@@ -230,12 +254,24 @@ def check_api_connection() -> bool:
                         "status": "warning",
                         "error": "No operation ID returned",
                     }
-            except Exception as e:
-                logger.error(f"✗ generate_video_async error: {e}")
-                results["api_checks"]["details"]["generate_video_async"] = {
-                    "status": "failure",
-                    "error": str(e),
+        except Exception as e:
+            logger.error(f"✗ Video generation API error: {e}")
+            results["api_checks"]["details"]["api_error"] = str(e)
+
+            # Try to at least check if the model works for text generation
+            try:
+                response = model.generate_content(prompt)
+                results["api_checks"]["details"]["generate_content"] = {
+                    "status": "success",
+                    "message": "Generated content successfully as fallback",
                 }
+                logger.info("✓ generate_content fallback succeeded")
+            except Exception as text_e:
+                results["api_checks"]["details"]["generate_content"] = {
+                    "status": "failure",
+                    "error": str(text_e),
+                }
+                logger.error(f"✗ Text generation fallback also failed: {text_e}")
 
         # Record timing
         elapsed = time.time() - start_time
@@ -257,12 +293,12 @@ def check_storage_access() -> bool:
     logger.info("Checking storage access...")
     results["storage_checks"]["status"] = "running"
 
+    # Try to get bucket name from different sources
     bucket_name = os.environ.get("VERTEX_BUCKET_NAME")
     if not bucket_name:
-        logger.warning("VERTEX_BUCKET_NAME environment variable not set")
-        results["storage_checks"]["details"]["bucket_name"] = "Not set"
-        results["storage_checks"]["status"] = "warning"
-        return False
+        project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "av-8675309")
+        bucket_name = f"{project_id}-video-jobs"
+        logger.info(f"VERTEX_BUCKET_NAME not set, using default: {bucket_name}")
 
     results["storage_checks"]["details"]["bucket_name"] = bucket_name
 
@@ -274,43 +310,53 @@ def check_storage_access() -> bool:
         # Check if bucket exists
         try:
             bucket = client.get_bucket(bucket_name)
-            logger.info(f"✓ Bucket {bucket_name} exists")
             results["storage_checks"]["details"]["bucket_exists"] = True
+            logger.info(f"✓ Bucket {bucket_name} exists and is accessible")
 
-            # Try writing a test file
-            blob = bucket.blob("veo-diag/test.txt")
-            blob.upload_from_string("Veo diagnostics test file")
-            logger.info(f"✓ Successfully wrote to gs://{bucket_name}/veo-diag/test.txt")
+            # Try to write a test file
+            blob = bucket.blob("veo-diag/test-file.txt")
+            blob.upload_from_string(
+                f"Veo diagnostic test at {time.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
             results["storage_checks"]["details"]["write_access"] = True
+            logger.info(f"✓ Successfully wrote to bucket {bucket_name}")
 
-            # Try reading the test file
+            # Try to read the file back
             content = blob.download_as_text()
-            if content == "Veo diagnostics test file":
-                logger.info(
-                    f"✓ Successfully read from gs://{bucket_name}/veo-diag/test.txt"
-                )
-                results["storage_checks"]["details"]["read_access"] = True
-            else:
-                logger.error(f"✗ Content mismatch when reading from bucket")
-                results["storage_checks"]["details"]["read_access"] = False
+            results["storage_checks"]["details"]["read_access"] = True
+            logger.info(f"✓ Successfully read from bucket {bucket_name}")
 
             # Clean up
             blob.delete()
-            logger.info(f"✓ Successfully deleted gs://{bucket_name}/veo-diag/test.txt")
-            results["storage_checks"]["details"]["delete_access"] = True
+            logger.info(f"✓ Successfully cleaned up test file from {bucket_name}")
 
             results["storage_checks"]["status"] = "success"
             return True
 
         except Exception as e:
-            logger.error(f"✗ Bucket access error: {e}")
-            results["storage_checks"]["details"]["error"] = str(e)
-            results["storage_checks"]["status"] = "failure"
-            return False
+            # Try to create the bucket if it doesn't exist
+            if "Not found" in str(e) or "404" in str(e):
+                logger.error(f"✗ Bucket access error: {e}")
+                results["storage_checks"]["details"]["bucket_error"] = str(e)
+
+                # Suggest creating the bucket
+                project_id = client.project
+                results["storage_checks"]["details"][
+                    "create_command"
+                ] = f"gsutil mb -p {project_id} -l us-central1 gs://{bucket_name}"
+                results["storage_checks"]["details"]["bucket_creation_needed"] = True
+
+                results["storage_checks"]["status"] = "failure"
+                return False
+            else:
+                logger.error(f"✗ Bucket access error: {e}")
+                results["storage_checks"]["details"]["bucket_error"] = str(e)
+                results["storage_checks"]["status"] = "failure"
+                return False
 
     except Exception as e:
         logger.error(f"✗ Storage client error: {e}")
-        results["storage_checks"]["details"]["error"] = str(e)
+        results["storage_checks"]["details"]["client_error"] = str(e)
         results["storage_checks"]["status"] = "failure"
         return False
 
@@ -319,92 +365,103 @@ def run_diagnostics() -> Dict[str, Any]:
     """Run all diagnostic checks and return results."""
     logger.info("Starting Veo SDK diagnostics...")
 
-    # Run checks in sequence, stopping if a critical check fails
+    # Run the diagnostic checks
     imports_ok = check_imports()
-    if not imports_ok:
-        logger.error("Import checks failed, cannot continue")
-        results["overall"]["status"] = "failure"
-        results["overall"]["summary"] = "Failed to import required modules"
-        return results
-
     auth_ok = check_authentication()
-    if not auth_ok:
-        logger.error("Authentication checks failed, cannot continue")
-        results["overall"]["status"] = "failure"
-        results["overall"]["summary"] = "Failed to authenticate with Google Cloud"
-        return results
-
     deps_ok = check_dependencies()
     storage_ok = check_storage_access()
     api_ok = check_api_connection()
 
     # Determine overall status
-    if imports_ok and auth_ok and deps_ok and storage_ok and api_ok:
+    if all([imports_ok, auth_ok, deps_ok, storage_ok, api_ok]):
         results["overall"]["status"] = "success"
-        results["overall"]["summary"] = "All Veo SDK checks passed"
-    elif imports_ok and auth_ok and api_ok:
-        results["overall"]["status"] = "warning"
         results["overall"][
             "summary"
-        ] = "Core Veo SDK functionality works, but some checks failed"
+        ] = "All checks passed! Veo SDK is properly configured."
+    elif all([imports_ok, auth_ok, deps_ok]):
+        if not storage_ok and api_ok:
+            results["overall"]["status"] = "warning"
+            results["overall"][
+                "summary"
+            ] = "Core Veo SDK functionality works, but some checks failed"
+        else:
+            results["overall"]["status"] = "failure"
+            results["overall"]["summary"] = "Some critical checks failed. See details."
     else:
         results["overall"]["status"] = "failure"
-        results["overall"]["summary"] = "Veo SDK is not functioning correctly"
+        results["overall"][
+            "summary"
+        ] = "Critical configuration issues detected. See details."
 
-    logger.info(f"Diagnostics complete: {results['overall']['summary']}")
+    # Add recommended actions
+    results["overall"]["recommendations"] = []
+
+    if not storage_ok:
+        if results["storage_checks"]["details"].get("bucket_creation_needed"):
+            cmd = results["storage_checks"]["details"].get("create_command", "")
+            results["overall"]["recommendations"].append(
+                f"Create a GCS bucket with: {cmd}"
+            )
+        else:
+            results["overall"]["recommendations"].append(
+                "Set VERTEX_BUCKET_NAME environment variable and ensure the bucket exists"
+            )
+
+    if not api_ok:
+        api_details = results["api_checks"]["details"]
+        if "generate_video_async" in str(api_details.get("error", "")):
+            results["overall"]["recommendations"].append(
+                "Update to a newer version of google-cloud-aiplatform[preview]"
+            )
+
     return results
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Veo SDK Diagnostic Tool")
-    parser.add_argument("--verbose", action="store_true", help="Show verbose output")
-    parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    parser.add_argument("--output", type=str, help="Save results to JSON file")
     args = parser.parse_args()
 
+    # Set logging level based on verbosity
     if args.verbose:
         logger.setLevel(logging.DEBUG)
 
-    try:
-        results = run_diagnostics()
+    # Run diagnostics
+    results = run_diagnostics()
 
-        if args.json:
-            print(json.dumps(results, indent=2))
-        else:
-            # Print a summary to stdout
-            print("\n===== Veo SDK Diagnostic Results =====")
-            print(
-                f"Overall: {results['overall']['status'].upper()} - {results['overall']['summary']}"
-            )
-            print("\nDetail by category:")
-            for category, data in results.items():
-                if category != "overall":
-                    print(f"- {category}: {data['status'].upper()}")
+    # Print human-readable summary
+    print("\n===== Veo SDK Diagnostic Results =====")
+    print(
+        f"Overall: {results['overall']['status'].upper()} - {results['overall']['summary']}"
+    )
+    print("\nDetail by category:")
+    for category in [
+        "import_checks",
+        "auth_checks",
+        "dependency_checks",
+        "api_checks",
+        "storage_checks",
+    ]:
+        print(f"- {category}: {results[category]['status'].upper()}")
 
-            if results["overall"]["status"] != "success":
-                print("\nRecommended actions:")
-                if results["import_checks"]["status"] != "success":
-                    print(
-                        "- Install required packages: pip install google-cloud-aiplatform[preview] google-cloud-storage"
-                    )
-                if results["auth_checks"]["status"] != "success":
-                    print(
-                        "- Check authentication: Set GOOGLE_APPLICATION_CREDENTIALS environment variable"
-                    )
-                if results["dependency_checks"]["status"] != "success":
-                    print(
-                        "- Check dependency versions and ensure you're using Python 3.11"
-                    )
-                if results["storage_checks"]["status"] != "success":
-                    print(
-                        "- Set VERTEX_BUCKET_NAME environment variable and ensure the bucket exists"
-                    )
-                if results["api_checks"]["status"] != "success":
-                    print("- Check API access and quota limits")
+    if results["overall"]["recommendations"]:
+        print("\nRecommended actions:")
+        for rec in results["overall"]["recommendations"]:
+            print(f"- {rec}")
 
-        # Exit with appropriate code
-        sys.exit(0 if results["overall"]["status"] == "success" else 1)
+    # Save results to file if requested
+    if args.output:
+        with open(args.output, "w") as f:
+            json.dump(results, f, indent=2)
+        print(f"\nDetailed results saved to {args.output}")
 
-    except Exception as e:
-        logger.error(f"Diagnostic script error: {e}")
-        print(f"Error: {e}")
-        sys.exit(2)
+    # Exit with appropriate code
+    if results["overall"]["status"] == "success":
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

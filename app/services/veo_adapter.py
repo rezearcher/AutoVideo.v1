@@ -15,8 +15,7 @@ _LOG = logging.getLogger("veo")
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 
@@ -26,6 +25,22 @@ def make_clip(prompt: str, seconds: int = 8) -> str:
         raise ValueError("Veo 3 only supports 5-8 s duration")
 
     model = GenerativeModel(_MODEL_ID)
+
+    # Check if the generate_video_async method exists
+    if not hasattr(model, "generate_video_async"):
+        raise RuntimeError(
+            "The GenerativeModel does not have the generate_video_async method. "
+            "This could be because you're using an older version of the SDK. "
+            "Try updating with: pip install -U google-cloud-aiplatform[preview]"
+        )
+
+    # Make sure we have a bucket configured
+    if not _BUCKET:
+        raise ValueError(
+            "VERTEX_BUCKET_NAME environment variable is not set. "
+            "This is required for storing video output."
+        )
+
     op = model.generate_video_async(
         prompt,
         generation_config=GenerationConfig(
@@ -57,17 +72,18 @@ def create_video(prompt: str, output_path: str, duration: int = 8) -> str:
     try:
         _LOG.info(f"Generating video for prompt: {prompt}")
         start_time = time.time()
-        
+
         # Generate the video clip
         local_path = make_clip(prompt, duration)
-        
+
         # Copy to output path
         import shutil
+
         shutil.copy(local_path, output_path)
-        
+
         elapsed = time.time() - start_time
         _LOG.info(f"Video generated successfully in {elapsed:.2f}s: {output_path}")
-        
+
         return output_path
     except Exception as e:
         _LOG.error(f"Error generating video: {e}")
@@ -77,22 +93,30 @@ def create_video(prompt: str, output_path: str, duration: int = 8) -> str:
 def main():
     """Main entry point for the Veo adapter when run as a script."""
     parser = argparse.ArgumentParser(description="Generate videos using Veo AI")
-    parser.add_argument("--prompt", required=True, help="Text prompt for video generation")
-    parser.add_argument("--output", required=True, help="Output path for the generated video")
-    parser.add_argument("--duration", type=int, default=8, help="Duration in seconds (5-8)")
+    parser.add_argument(
+        "--prompt", required=True, help="Text prompt for video generation"
+    )
+    parser.add_argument(
+        "--output", required=True, help="Output path for the generated video"
+    )
+    parser.add_argument(
+        "--duration", type=int, default=8, help="Duration in seconds (5-8)"
+    )
     parser.add_argument("--bucket", help="GCS bucket name for Veo output")
-    
+
     args = parser.parse_args()
-    
+
     # Override environment variable if provided
     if args.bucket:
         global _BUCKET
         _BUCKET = args.bucket
-    
+
     if not _BUCKET:
-        _LOG.error("VERTEX_BUCKET_NAME environment variable or --bucket argument is required")
+        _LOG.error(
+            "VERTEX_BUCKET_NAME environment variable or --bucket argument is required"
+        )
         sys.exit(1)
-    
+
     try:
         create_video(args.prompt, args.output, args.duration)
         _LOG.info("Video generation completed successfully")

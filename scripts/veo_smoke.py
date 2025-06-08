@@ -27,24 +27,33 @@ def main():
 
         # Generate a short test video
         print("🎬 Generating test video...")
-        op = model.generate_video_async(
-            "Simple white cat sitting on a keyboard",
+
+        # Use the correct method for video generation
+        response = model.generate_content(
+            "Generate a 5-second video of a simple white cat sitting on a keyboard",
             generation_config={
-                "durationSeconds": 5,
-                "aspectRatio": "16:9",
-                "sampleCount": 1,
+                "video": {"duration_sec": 5, "aspect_ratio": "16:9", "sample_count": 1}
             },
         )
 
-        print("⏳ Waiting for operation to complete (may take a few minutes)...")
-        resp = op.result(timeout=300)
+        print("⏳ Checking response...")
 
-        if resp and resp.videos and len(resp.videos) > 0:
-            print(f"✅ Veo smoke test passed! Video URI: {resp.videos[0].gcs_uri}")
-            return True
-        else:
-            print("❌ Veo response did not contain any videos")
-            sys.exit(1)
+        # Check if we have a video in the response
+        if response and hasattr(response, "candidates") and response.candidates:
+            candidate = response.candidates[0]
+            if hasattr(candidate, "content") and candidate.content:
+                video_part = None
+                for part in candidate.content.parts:
+                    if hasattr(part, "video"):
+                        video_part = part.video
+                        break
+
+                if video_part:
+                    print(f"✅ Veo smoke test passed! Video generated successfully")
+                    return True
+
+        print("❌ Veo response did not contain any videos")
+        sys.exit(1)
     except Exception as e:
         error_str = str(e).lower()
         if (

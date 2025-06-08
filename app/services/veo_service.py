@@ -90,35 +90,55 @@ class VeoService:
         try:
             logger.info(f"Generating video with Veo AI. Prompt: '{prompt}'")
 
+            # Use the correct generation_config for Veo API
             generation_config = {
-                "durationSeconds": duration_seconds,
-                "aspectRatio": aspect_ratio,
-                "sampleCount": 1,
+                "video": {
+                    "duration_sec": duration_seconds,
+                    "aspect_ratio": aspect_ratio,
+                    "sample_count": 1,
+                }
             }
 
-            # Start async generation
-            op = self._model.generate_video_async(
+            # Generate video using the correct method
+            response = self._model.generate_content(
                 prompt, generation_config=generation_config
             )
 
-            # Wait for completion (with timeout)
-            logger.info("Waiting for Veo video generation to complete...")
-            response = op.result(timeout=600)  # 10 minute timeout
-
-            if not response or not response.videos or len(response.videos) == 0:
+            # Extract video data from response
+            if (
+                not response
+                or not hasattr(response, "candidates")
+                or not response.candidates
+            ):
                 logger.error("Veo AI returned empty response")
                 return None
 
-            # Get the GCS URI of the generated video
-            video_uri = response.videos[0].gcs_uri
-            logger.info(f"Veo AI video generated successfully: {video_uri}")
+            # Process video from response
+            candidate = response.candidates[0]
+            if not hasattr(candidate, "content") or not candidate.content:
+                logger.error("Veo AI response contains no content")
+                return None
 
-            # Download from GCS and upload to our bucket
-            local_path = f"/tmp/veo_{uuid.uuid4()}.mp4"
-            self._storage_service.download_from_gcs(video_uri, local_path)
+            # Extract video part from content
+            video_part = None
+            for part in candidate.content.parts:
+                if hasattr(part, "video") and part.video:
+                    video_part = part.video
+                    break
 
-            # Upload to our bucket
+            if not video_part:
+                logger.error("No video found in Veo AI response")
+                return None
+
+            # Save the video to a temporary file
             video_id = f"veo_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp4"
+            local_path = f"/tmp/{video_id}"
+
+            # Write video bytes to file
+            with open(local_path, "wb") as f:
+                f.write(video_part.file_data)
+
+            # Upload to our storage bucket
             storage_path = f"videos/veo/{video_id}"
             public_url = self._storage_service.upload_file(local_path, storage_path)
 
@@ -126,6 +146,7 @@ class VeoService:
             if os.path.exists(local_path):
                 os.remove(local_path)
 
+            logger.info(f"Veo AI video generated successfully: {public_url}")
             return public_url
 
         except Exception as e:

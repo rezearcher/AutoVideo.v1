@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import elevenlabs
-from app.config import settings
 from elevenlabs.api import Error as ElevenLabsError
 from google.cloud import texttospeech
 
+from app.config import settings
 from app.utils.audio_utils import normalize_audio_loudness
 
 logger = logging.getLogger(__name__)

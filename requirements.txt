@@ -14,7 +14,7 @@ google-cloud-aiplatform>=1.46.3
 openai==1.58.1
 requests==2.32.3
 pillow==10.4.0
-moviepy==1.0.3
+moviepy==2.0.0
 pydub==0.25.1
 numpy==2.2.0
 python-dotenv==1.0.1

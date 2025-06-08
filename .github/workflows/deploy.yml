@@ -279,16 +279,19 @@ jobs:
       run: pip install --no-cache-dir google-cloud-aiplatform==1.96.0
 
     - name: Check Veo token quota
+      env:
+        PROJECT_ID: ${{ env.PROJECT_ID }}
       run: |
-        TOKENS=$(gcloud ai quotas describe \
-          --project ${{ env.PROJECT_ID }} \
-          --location=us-central1 \
-          --format='value(consumerQuotaLimits[0].metricRules[0].maxLimit)')
-        if [ "$TOKENS" -lt 40 ]; then
-          echo "❌ Not enough tokens ($TOKENS)"
-          exit 1
+        PROJECT_NUM=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+        TOKENS=$(gcloud services quotas list \
+           --service=aiplatform.googleapis.com \
+           --consumer=projects/$PROJECT_NUM \
+           --format="value(consumerQuotaLimits.metric.name,consumerQuotaLimits.limits[0].effectiveLimit)" \
+           | awk '$1=="GENERATIVE_VIDEO_TOKENS"{print $2}')
+        echo "✅ Available Veo tokens: $TOKENS"
+        if [ -z "$TOKENS" ] || [ "$TOKENS" -lt 40 ]; then
+          echo "❌ Not enough Veo tokens (need 40, have $TOKENS)"; exit 1
         fi
-        echo "✅ Sufficient Veo tokens available: $TOKENS"
 
     - name: Veo smoke test
       run: |

@@ -10,7 +10,8 @@ google-cloud-speech==2.28.0
 google-cloud-texttospeech==2.19.0
 google-cloud-translate==3.18.0
 google-cloud-videointelligence==2.14.1
-google-cloud-aiplatform>=1.96.0
+# [preview] is required for vertexai.preview.generative_models used by Veo video generation
+google-cloud-aiplatform[preview]>=1.96.0
 openai==1.58.1
 requests==2.32.3
 pillow==10.4.0

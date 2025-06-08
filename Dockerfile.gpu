@@ -26,7 +26,7 @@ COPY requirements-gpu.txt .
 RUN pip install --upgrade pip && pip install -r requirements-gpu.txt
 
 # Install additional dependencies for Vertex AI explicitly
-RUN pip install google-cloud-storage==2.12.0 google-cloud-aiplatform==1.36.4
+RUN pip install google-cloud-storage==2.12.0 google-cloud-aiplatform[preview]==1.36.4
 
 # Copy application code
 COPY . /app

@@ -239,6 +239,12 @@ jobs:
         docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }}
         docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:latest
 
+    - name: Verify Veo dependencies
+      run: |
+        echo "Verifying Veo dependencies are properly installed..."
+        pip install google-cloud-aiplatform[preview]
+        python -c "import vertexai; from vertexai.preview.generative_models import GenerativeModel; print('Veo dependencies verified')"
+      
     - name: Deploy to Cloud Run
       uses: google-github-actions/deploy-cloudrun@v2
       with:

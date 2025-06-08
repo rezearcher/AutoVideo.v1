@@ -70,6 +70,25 @@ jobs:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
         ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
     
+    - name: Verify Veo initialization
+      run: |
+        python -c "import vertexai
+        from vertexai.preview.generative_models import GenerativeModel
+        import os
+        
+        # Initialize Vertex AI
+        project_id = os.environ.get('GOOGLE_CLOUD_PROJECT')
+        print(f'Initializing Vertex AI with project {project_id}')
+        vertexai.init(project=project_id, location='us-central1')
+        
+        # Verify model can be initialized
+        model = GenerativeModel('veo-3.0-generate-preview')
+        print('Veo model initialized successfully')"
+      env:
+        PYTHONPATH: .
+        GOOGLE_CLOUD_PROJECT: ${{ env.GOOGLE_CLOUD_PROJECT }}
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+    
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:

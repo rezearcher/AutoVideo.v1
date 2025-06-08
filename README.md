@@ -353,3 +353,13 @@ The system now integrates Google's Veo 3 video generation API for dramatically i
 - 🏆 **Professional Quality**: Much higher quality output comparable to professional video
 
 ## 🚀 Getting Started
+
+## Video Generation with Veo AI
+
+This application can use Google's Veo AI for video generation. To use Veo, ensure:
+
+1. The `VEO_ENABLED=true` environment variable is set
+2. A valid `VERTEX_BUCKET_NAME` is configured
+3. The `google-cloud-aiplatform[preview]` package is installed (critical for accessing `vertexai.preview.generative_models`)
+
+The Veo AI integration provides high-quality video generation directly from prompts.

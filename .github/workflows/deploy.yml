@@ -264,6 +264,32 @@ jobs:
         echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
         echo "🌐 Service URL: $SERVICE_URL"
 
+    - name: Set up Python for smoke test
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: aiplatform-${{ hashFiles('requirements.txt') }}
+        
+    - name: Install deps for smoke test
+      run: pip install --no-cache-dir google-cloud-aiplatform==1.46.3
+
+    - name: Check Veo token quota
+      run: |
+        TOKENS=$(gcloud ai quotas describe \
+          --project ${{ env.PROJECT_ID }} \
+          --location=us-central1 \
+          --format='value(consumerQuotaLimits[0].metricRules[0].maxLimit)')
+        if [ "$TOKENS" -lt 40 ]; then
+          echo "❌ Not enough tokens ($TOKENS)"
+          exit 1
+        fi
+        echo "✅ Sufficient Veo tokens available: $TOKENS"
+
     - name: Veo smoke test
       run: |
         echo "🧪 Running Veo smoke test to verify API integration..."

@@ -32,16 +32,14 @@ RUN pip install google-cloud-storage==2.12.0 google-cloud-aiplatform[preview]==1
 COPY . /app
 WORKDIR /app
 
-# Copy caption generator
-COPY caption_generator.py /app/
-
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+ENV VEO_ENABLED=true
+ENV VEO_MODEL=veo-3.0-generate-preview
 
-# Configure ImageMagick for MoviePy
-RUN mkdir -p /root/.moviepy && \
-    echo "IMAGEMAGICK_BINARY=convert" > /root/.moviepy/moviepy.conf
+# Configure FFmpeg for video processing
+RUN mkdir -p /app/tmp && chmod 777 /app/tmp
 
-ENTRYPOINT ["python", "gpu_worker_improved.py"] 
+ENTRYPOINT ["python", "app/services/veo_adapter.py"] 

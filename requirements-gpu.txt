@@ -1,8 +1,8 @@
-# GPU Container Dependencies - Updated for MoviePy support
-moviepy==1.0.3
+# GPU Container Dependencies - Updated for Veo-only pipeline
 opencv-python-headless>=4.8.0
 numpy>=1.25.0
 Pillow==10.0.0
-google-cloud-storage
+google-cloud-storage>=2.12.0
+ffmpeg-python>=0.2.0
 # [preview] is required for vertexai.preview.generative_models used by Veo video generation
-google-cloud-aiplatform[preview] 
+google-cloud-aiplatform[preview]>=1.96.0 

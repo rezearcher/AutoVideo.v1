@@ -46,8 +46,22 @@ def main():
             print("❌ Veo response did not contain any videos")
             sys.exit(1)
     except Exception as e:
-        print(f"❌ Veo smoke test failed: {e}")
-        sys.exit(1)
+        error_str = str(e).lower()
+        if (
+            "quota" in error_str
+            or "resource exhausted" in error_str
+            or "insufficient_tokens" in error_str
+        ):
+            print(f"❌ Veo quota exceeded or insufficient tokens: {e}")
+            print("💡 Please check your Veo API quota in Google Cloud Console")
+            sys.exit(2)  # Special exit code for quota issues
+        elif "permission" in error_str or "unauthorized" in error_str:
+            print(f"❌ Permission denied accessing Veo API: {e}")
+            print("💡 Check service account permissions and API enablement")
+            sys.exit(3)  # Special exit code for permission issues
+        else:
+            print(f"❌ Veo smoke test failed: {e}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

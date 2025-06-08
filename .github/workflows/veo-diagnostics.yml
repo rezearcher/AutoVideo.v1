@@ -36,15 +36,15 @@ jobs:
       
       - name: Run black
         run: |
-          black check_modules.py scripts/veo_diag.py
+          black check_modules.py scripts/veo_diag.py app/services/veo_adapter.py
       
       - name: Run isort
         run: |
-          isort check_modules.py scripts/veo_diag.py
+          isort check_modules.py scripts/veo_diag.py app/services/veo_adapter.py
       
       - name: Verify formatting
         run: |
-          black --check --diff check_modules.py scripts/veo_diag.py
+          black --check --diff check_modules.py scripts/veo_diag.py app/services/veo_adapter.py
       
       - name: Configure Git
         run: |
@@ -54,7 +54,7 @@ jobs:
       - name: Commit changes if any
         run: |
           if [[ -n $(git status --porcelain) ]]; then
-            git add check_modules.py scripts/veo_diag.py
+            git add check_modules.py scripts/veo_diag.py app/services/veo_adapter.py
             git commit -m "style: apply black and isort formatting"
             echo "Changes were committed"
           else

@@ -10,17 +10,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from PIL import Image, ImageDraw, ImageFont
+
 # Use our compatibility module instead of direct imports
 from app.services.moviepy_compat import (
+    MOVIEPY_AVAILABLE,
     AudioFileClip,
     ImageClip,
     VideoFileClip,
     concatenate_videoclips,
     resize,
-    MOVIEPY_AVAILABLE,
 )
-from PIL import Image, ImageDraw, ImageFont
-
 from caption_generator import add_captions_to_video, create_caption_images
 
 # Add new imports for Veo integration

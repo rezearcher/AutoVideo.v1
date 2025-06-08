@@ -20,10 +20,10 @@ from google.cloud import storage
 # Update to use our compatibility module
 try:
     from app.services.moviepy_compat import (
+        MOVIEPY_AVAILABLE,
         AudioFileClip,
         ImageClip,
         concatenate_videoclips,
-        MOVIEPY_AVAILABLE,
     )
 except ImportError:
     # If running standalone, fall back to direct imports

@@ -3,8 +3,9 @@ import os
 from typing import List, Tuple
 
 import numpy as np
-from app.services.moviepy_compat import ImageClip, VideoFileClip, CompositeVideoClip
 from PIL import Image, ImageDraw, ImageFont
+
+from app.services.moviepy_compat import CompositeVideoClip, ImageClip, VideoFileClip
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

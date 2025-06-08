@@ -12,11 +12,11 @@ try:
     import moviepy.editor.editor as editor
     from moviepy.editor.editor import (
         AudioFileClip,
-        ImageClip,
-        VideoFileClip,
         CompositeVideoClip,
-        concatenate_videoclips,
+        ImageClip,
         TextClip,
+        VideoFileClip,
+        concatenate_videoclips,
     )
     from moviepy.editor.video.fx.all import resize
 
@@ -27,11 +27,11 @@ except ImportError:
     try:
         from moviepy.editor import (
             AudioFileClip,
-            ImageClip,
-            VideoFileClip,
             CompositeVideoClip,
-            concatenate_videoclips,
+            ImageClip,
             TextClip,
+            VideoFileClip,
+            concatenate_videoclips,
         )
         from moviepy.video.fx.all import resize
 

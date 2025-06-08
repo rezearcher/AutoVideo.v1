@@ -10,13 +10,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from moviepy.editor import (
+# Use our compatibility module instead of direct imports
+from app.services.moviepy_compat import (
     AudioFileClip,
     ImageClip,
     VideoFileClip,
     concatenate_videoclips,
+    resize,
+    MOVIEPY_AVAILABLE
 )
-from moviepy.video.fx.all import resize
 from PIL import Image, ImageDraw, ImageFont
 
 from caption_generator import add_captions_to_video, create_caption_images
@@ -31,7 +33,7 @@ try:
     from google.cloud import storage
     from vertexai.preview.generative_models import GenerativeModel
 
-    VEOAI_AVAILABLE = True
+    VEOAI_AVAILABLE = True and MOVIEPY_AVAILABLE
 except ImportError:
     VEOAI_AVAILABLE = False
 

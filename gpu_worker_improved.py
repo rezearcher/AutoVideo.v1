@@ -16,7 +16,30 @@ import traceback
 from typing import Any, Dict, List, Optional
 
 from google.cloud import storage
-from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
+# Update to use our compatibility module
+try:
+    from app.services.moviepy_compat import (
+        AudioFileClip, 
+        ImageClip, 
+        concatenate_videoclips,
+        MOVIEPY_AVAILABLE
+    )
+except ImportError:
+    # If running standalone, fall back to direct imports
+    try:
+        from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
+        MOVIEPY_AVAILABLE = True
+    except ImportError:
+        MOVIEPY_AVAILABLE = False
+        # Define dummy classes to prevent errors
+        class DummyClip:
+            def __init__(self, *args, **kwargs): pass
+            def set_duration(self, *args, **kwargs): pass
+            def set_audio(self, *args, **kwargs): pass
+            def write_videofile(self, *args, **kwargs): pass
+                
+        AudioFileClip = ImageClip = DummyClip
+        concatenate_videoclips = lambda clips: DummyClip()
 
 # Configure detailed logging
 logging.basicConfig(

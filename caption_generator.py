@@ -3,7 +3,11 @@ import os
 from typing import List, Tuple
 
 import numpy as np
-from moviepy.editor import CompositeVideoClip, ImageClip, VideoFileClip
+from app.services.moviepy_compat import (
+    ImageClip, 
+    VideoFileClip, 
+    CompositeVideoClip
+)
 from PIL import Image, ImageDraw, ImageFont
 
 # Configure logging

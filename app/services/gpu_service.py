@@ -36,7 +36,7 @@ def bootstrap():
         service = VertexGPUJobService(
             project_id=project_id, region="us-central1", bucket_name=bucket_name
         )
-        
+
         # Assign to global variable
         gpu_service_instance = service
 
@@ -55,8 +55,8 @@ def bootstrap():
 def get_instance():
     """Get the VertexGPUJobService instance or initialize it if needed"""
     result = gpu_service_instance
-    
+
     if result is None:
         result = bootstrap()
-    
+
     return result

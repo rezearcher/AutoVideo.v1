@@ -62,14 +62,25 @@ except ImportError as e:
 # Optional import for Veo AI video generation
 try:
     if os.environ.get("VEO_ENABLED", "false").lower() == "true":
-        from video_creator import VEOAI_AVAILABLE, create_veo_video
+        try:
+            from video_creator import VEOAI_AVAILABLE, create_veo_video
 
-        logging.info("Veo AI video generation enabled")
+            logging.info("Veo AI video generation enabled")
+
+            # Verify Vertex bucket is configured when Veo is enabled
+            if not os.environ.get("VERTEX_BUCKET_NAME"):
+                logging.warning(
+                    "VEO_ENABLED=true but VERTEX_BUCKET_NAME not set. Veo may not function correctly."
+                )
+        except ImportError as e:
+            VEOAI_AVAILABLE = False
+            create_veo_video = None
+            logging.error(f"Veo AI video generation could not be imported: {e}")
     else:
         VEOAI_AVAILABLE = False
         create_veo_video = None
         logging.info("Veo AI video generation disabled by environment variable")
-except ImportError as e:
+except Exception as e:
     VEOAI_AVAILABLE = False
     create_veo_video = None
     logging.warning(f"Veo AI video generation not available: {e}")
@@ -482,13 +493,38 @@ def health_check_vertex_ai():
 @app.route("/health/veo")
 def health_check_veo():
     """Health check for Veo API connectivity."""
-    result = {"status": "unknown", "details": {}}
+    result = {"status": "unknown", "details": {}, "configuration": {}}
 
     try:
+        # Check environment variables first
+        veo_enabled = os.environ.get("VEO_ENABLED", "false").lower() == "true"
+        result["configuration"]["veo_enabled"] = veo_enabled
+
+        if not veo_enabled:
+            result["status"] = "disabled"
+            result["details"][
+                "message"
+            ] = "Veo is disabled by configuration. Set VEO_ENABLED=true to enable."
+            return jsonify(result)
+
+        # Check for bucket configuration
+        bucket_name = os.environ.get("VERTEX_BUCKET_NAME")
+        result["configuration"]["bucket_name"] = bucket_name
+
+        if not bucket_name:
+            result["status"] = "misconfigured"
+            result["details"][
+                "error"
+            ] = "VERTEX_BUCKET_NAME environment variable is not set"
+            return jsonify(result), 400
+
         # Check if the Veo module is available
+        result["details"]["code_available"] = VEOAI_AVAILABLE
         if not VEOAI_AVAILABLE:
             result["status"] = "unavailable"
-            result["details"]["error"] = "Veo SDK not installed"
+            result["details"][
+                "error"
+            ] = "Veo SDK not installed or initialization failed"
             return jsonify(result), 503
 
         # Try to initialize the Veo model to verify permissions
@@ -519,30 +555,32 @@ def health_check_veo():
                 result["details"]["model_list_error"] = str(e)
                 # Continue with health check even if model listing fails
 
-            # Check if VERTEX_BUCKET_NAME is set
-            bucket_name = os.environ.get("VERTEX_BUCKET_NAME")
-            if bucket_name:
-                result["details"]["bucket_configured"] = True
-                result["details"]["bucket_name"] = bucket_name
+            # Check bucket permissions
+            try:
+                from google.cloud import storage
 
-                # Check bucket permissions
-                try:
-                    from google.cloud import storage
+                storage_client = storage.Client()
+                bucket = storage_client.bucket(bucket_name)
+                if bucket.exists():
+                    result["details"]["bucket_exists"] = True
 
-                    storage_client = storage.Client()
-                    bucket = storage_client.bucket(bucket_name)
-                    if bucket.exists():
-                        result["details"]["bucket_exists"] = True
-                    else:
-                        result["details"]["bucket_exists"] = False
-                except Exception as e:
-                    result["details"]["bucket_error"] = str(e)
-            else:
-                result["details"]["bucket_configured"] = False
-                result["details"][
-                    "note"
-                ] = "VERTEX_BUCKET_NAME environment variable not set"
+                    # Test write permissions by creating a tiny test file
+                    test_blob = bucket.blob("veo-temp/health-check-test.txt")
+                    test_blob.upload_from_string(
+                        "Health check test at " + datetime.now().isoformat()
+                    )
+                    result["details"]["bucket_write_permission"] = True
+                else:
+                    result["details"]["bucket_exists"] = False
+                    result["status"] = "error"
+                    result["details"]["error"] = f"Bucket {bucket_name} does not exist"
+                    return jsonify(result), 500
+            except Exception as e:
+                result["details"]["bucket_error"] = str(e)
+                result["status"] = "error"
+                return jsonify(result), 500
 
+            # All checks passed
             result["status"] = "healthy"
             return jsonify(result)
 
@@ -1160,14 +1198,35 @@ def generate_video_background(topic):
         if VEOAI_AVAILABLE and create_veo_video:
             logger.info("Attempting to create video with Veo AI")
             try:
+                # Check for VERTEX_BUCKET_NAME which is required for Veo
+                if not os.environ.get("VERTEX_BUCKET_NAME"):
+                    raise ValueError(
+                        "VERTEX_BUCKET_NAME environment variable is not set. Required for Veo operation."
+                    )
+
+                # Attempt to create the video using Veo
                 video_file_path = create_veo_video(story, video_path, num_scenes=5)
                 logger.info(f"Veo video created successfully: {video_file_path}")
+            except ImportError as imp_error:
+                logger.error(
+                    f"Veo AI dependencies not properly installed: {str(imp_error)}"
+                )
+                logger.info("Falling back to other video creation methods")
+                video_file_path = None
+            except ValueError as val_error:
+                logger.error(f"Veo AI configuration error: {str(val_error)}")
+                logger.info("Falling back to other video creation methods")
+                video_file_path = None
             except Exception as veo_error:
                 logger.error(f"Veo video creation failed: {str(veo_error)}")
                 logger.info("Falling back to other video creation methods")
                 video_file_path = None
         else:
-            logger.info("Veo AI not available, trying alternative methods")
+            if os.environ.get("VEO_ENABLED", "false").lower() == "true":
+                logger.warning("VEO_ENABLED=true but Veo is not properly initialized.")
+                logger.info("Check your installation and configuration.")
+            else:
+                logger.info("Veo AI not available, trying alternative methods")
             video_file_path = None
 
         # If Veo failed, use local video processing if available

@@ -264,6 +264,12 @@ jobs:
         echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
         echo "🌐 Service URL: $SERVICE_URL"
 
+    - name: Veo smoke test
+      run: |
+        echo "🧪 Running Veo smoke test to verify API integration..."
+        python scripts/veo_smoke.py ${{ env.PROJECT_ID }}
+        echo "✅ Veo API integration verified!"
+
     - name: Update traffic to new revision
       run: |
         # Get the latest revision name

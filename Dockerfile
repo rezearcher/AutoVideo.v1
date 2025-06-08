@@ -1,7 +1,7 @@
 # Build stage
 FROM python:3.11-slim as builder
 
-# Build time comment to force rebuild: 2025-06-07-04:30
+# Build time comment to force rebuild: 2025-06-07-05:45
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -44,6 +44,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd \
     gnupg \
     lsb-release \
+    libsm6 \
+    libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Google Cloud SDK

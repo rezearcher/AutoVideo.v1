@@ -4,7 +4,7 @@ import sys
 import uuid
 
 import vertexai
-from vertexai.preview.generative_models import GenerativeModel
+from vertexai.preview.generative_models import GenerationConfig, GenerativeModel
 
 
 def main():
@@ -28,12 +28,17 @@ def main():
         # Generate a short test video
         print("🎬 Generating test video...")
 
-        # Use the correct method for video generation
+        # Use the correct method for video generation with simpler parameters
         response = model.generate_content(
-            "Generate a 5-second video of a simple white cat sitting on a keyboard",
-            generation_config={
-                "video": {"duration_sec": 5, "aspect_ratio": "16:9", "sample_count": 1}
-            },
+            "Generate a 5-second video of a simple white cat sitting on a keyboard. HD quality.",
+            # Generation config without nested video object
+            generation_config=GenerationConfig(
+                temperature=0.4,
+                top_p=1.0,
+                top_k=32,
+                candidate_count=1,
+                max_output_tokens=2048,
+            ),
         )
 
         print("⏳ Checking response...")

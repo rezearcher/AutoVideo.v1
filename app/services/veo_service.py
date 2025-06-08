@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import vertexai
-    from vertexai.preview.generative_models import GenerativeModel
+    from vertexai.preview.generative_models import GenerationConfig, GenerativeModel
 
     VERTEXAI_AVAILABLE = True
 except ImportError:
@@ -90,18 +90,24 @@ class VeoService:
         try:
             logger.info(f"Generating video with Veo AI. Prompt: '{prompt}'")
 
-            # Use the correct generation_config for Veo API
-            generation_config = {
-                "video": {
-                    "duration_sec": duration_seconds,
-                    "aspect_ratio": aspect_ratio,
-                    "sample_count": 1,
-                }
-            }
+            # Enhance the prompt with duration and aspect ratio information
+            enhanced_prompt = (
+                f"Generate a {duration_seconds}-second video in {aspect_ratio} aspect ratio "
+                f"of the following: {prompt} Make it high quality."
+            )
+
+            # Use the correct GenerationConfig for Veo API
+            gen_config = GenerationConfig(
+                temperature=0.4,
+                top_p=1.0,
+                top_k=32,
+                candidate_count=1,
+                max_output_tokens=2048,
+            )
 
             # Generate video using the correct method
             response = self._model.generate_content(
-                prompt, generation_config=generation_config
+                enhanced_prompt, generation_config=gen_config
             )
 
             # Extract video data from response

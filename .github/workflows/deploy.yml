@@ -242,18 +242,24 @@ jobs:
     - name: Verify Veo dependencies
       run: |
         echo "Verifying Veo dependencies are properly installed..."
-        pip install google-cloud-aiplatform[preview]
+        pip install google-cloud-aiplatform[preview] google-cloud-storage
         python -c "import vertexai; from vertexai.preview.generative_models import GenerativeModel; print('Veo dependencies verified')"
       
     - name: Run the Veo diagnostic script before deployment
       if: ${{ !startsWith(github.ref, 'refs/tags/') && success() }}
       run: |
-        python -m pip install --upgrade pip
-        pip install --no-cache-dir "google-cloud-aiplatform[preview]>=1.96.0" google-cloud-storage
-        python scripts/veo_diag.py
-      env:
-        GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
-        VERTEX_BUCKET_NAME: ${{ secrets.VERTEX_BUCKET_NAME }}
+        echo "Running Veo diagnostic script..."
+        python scripts/veo_diag.py --json
+        
+        # Save the exit code
+        VEO_DIAG_EXIT_CODE=$?
+        
+        if [ $VEO_DIAG_EXIT_CODE -ne 0 ]; then
+          echo "::error::Veo diagnostic checks failed. Check the logs for details."
+          exit 1
+        fi
+        
+        echo "✅ Veo diagnostic checks passed"
 
     - name: Deploy to Cloud Run
       uses: google-github-actions/deploy-cloudrun@v2

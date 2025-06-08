@@ -1,57 +1,25 @@
-# Build stage
+# -------- build stage --------
 FROM python:3.11-slim as builder
+WORKDIR /app
 
-# Build time comment to force rebuild: 2025-06-07-05:45
+# Build time comment to force rebuild: 2025-06-08-16:45 (slim build)
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    python3-dev \
-    gcc \
-    libjpeg-dev \
-    zlib1g-dev \
-    libpng-dev \
-    libtiff-dev \
-    libwebp-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create and activate virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Install Python dependencies
+# Copy requirements and install to /install prefix
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc && \
+    pip install --prefix=/install --no-cache-dir "google-cloud-aiplatform[preview]>=1.96.0" \
+                                          google-cloud-storage ffmpeg-python && \
+    pip install --prefix=/install --no-cache-dir -r requirements.txt && \
+    apt-get purge -y gcc && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Runtime stage
+# -------- runtime stage --------
 FROM python:3.11-slim
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    fonts-liberation \
-    fonts-dejavu \
-    fonts-freefont-ttf \
-    libjpeg62-turbo \
-    libpng16-16 \
-    libtiff6 \
-    libwebp7 \
-    imagemagick \
-    curl \
-    iputils-ping \
-    dnsutils \
-    netcat-openbsd \
-    gnupg \
-    lsb-release \
-    libsm6 \
-    libxext6 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Google Cloud SDK
-RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && \
-    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - && \
-    apt-get update -y && apt-get install google-cloud-cli -y && \
+# Install only essential runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Set environment variables
@@ -59,22 +27,27 @@ ENV TZ=UTC
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 ENV GUNICORN_CMD_ARGS="--log-level=info --access-logfile=- --error-logfile=- --capture-output --enable-stdio-inheritance --timeout 120"
+ENV VEO_MODEL=veo-3.0-generate-preview
+ENV VOICE_ENABLED=false
+ENV CAPTIONS_ENABLED=false
 
-# Create app directory
+# Copy Python packages from builder stage
+COPY --from=builder /install /usr/local
+
+# Create app directory and necessary subdirectories
 WORKDIR /app
+RUN mkdir -p /app/output /app/secrets /app/tmp
+RUN chmod 777 /app/tmp  # Ensure tmp directory is writable
 
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Create necessary directories
-RUN mkdir -p /app/output /app/secrets /app/fonts
+# Create non-root user
+RUN useradd -m appuser && chown -R appuser:appuser /app
 
 # Copy application code
 COPY . .
 
-# Create non-root user
-RUN useradd -m appuser && chown -R appuser:appuser /app
+# Set ownership
+RUN chown -R appuser:appuser /app
+
 USER appuser
 
 # Health check

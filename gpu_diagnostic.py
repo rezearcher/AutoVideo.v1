@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 GPU Worker Environment Diagnostic Tool
-Checks dependencies, GPU availability, and MoviePy functionality
+Checks dependencies, GPU availability, and FFmpeg functionality
 """
 
 import os
@@ -19,7 +19,9 @@ print(f"Files in current directory: {os.listdir('.')}")
 # Check environment variables
 print("\n----- Environment Variables -----")
 for key, value in os.environ.items():
-    if any(x in key.lower() for x in ["nvidia", "cuda", "gpu", "python", "path"]):
+    if any(
+        x in key.lower() for x in ["nvidia", "cuda", "gpu", "python", "path", "veo"]
+    ):
         print(f"{key}: {value}")
 
 # Check NVIDIA/GPU availability
@@ -75,11 +77,11 @@ except Exception as e:
 # Check Python dependencies
 print("\n----- Python Dependencies -----")
 dependencies = [
-    "moviepy",
     "numpy",
     "PIL",
     "google.cloud.storage",
     "google.cloud.aiplatform",
+    "vertexai.preview.generative_models",
     "cv2",
 ]
 
@@ -97,53 +99,40 @@ for dep in dependencies:
             module = __import__(dep)
             version = getattr(module, "__version__", "unknown")
             print(f"✅ {dep} - Version: {version}")
-
-            # Special check for MoviePy
-            if dep == "moviepy":
-                print(f"  MoviePy path: {module.__file__}")
-                # Check if concatenate_videoclips is accessible
-                try:
-                    from moviepy.editor import concatenate_videoclips
-
-                    print("  ✅ moviepy.editor.concatenate_videoclips - Available")
-                except ImportError as e:
-                    print(f"  ❌ moviepy.editor.concatenate_videoclips - Error: {e}")
-
-                # Try alternate import paths to see what works
-                alternate_paths = [
-                    "from moviepy.video.compositing.concatenate import concatenate_videoclips",
-                    "from moviepy.video.VideoClip import concatenate_videoclips",
-                ]
-                for path in alternate_paths:
-                    try:
-                        exec(path)
-                        print(f"  ✅ {path} - Works")
-                    except ImportError as e:
-                        print(f"  ❌ {path} - Error: {e}")
-
     except ImportError:
         print(f"❌ {dep} - Not installed")
     except Exception as e:
         print(f"❌ {dep} - Error: {e}")
 
-# Test minimal MoviePy operation
-print("\n----- MoviePy Basic Test -----")
+# Test minimal FFmpeg operation
+print("\n----- FFmpeg Basic Test -----")
 try:
-    from moviepy.editor import TextClip
-
-    clip = TextClip("Test", fontsize=70, color="white", size=(640, 480))
-    print("✅ Created a TextClip successfully")
-
-    # Try to export a short test clip
+    # Create a test file
     test_path = "/tmp/test_clip.mp4"
-    print(f"Attempting to write a test clip to {test_path}...")
-    clip.write_videofile(test_path, fps=24, codec="libx264", duration=1)
+    print(f"Attempting to create a test file using FFmpeg at {test_path}...")
+
+    # Generate a test video (solid color with text)
+    cmd = [
+        "ffmpeg",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=blue:s=640x480:d=1",
+        "-vf",
+        "drawtext=text='Test':fontcolor=white:fontsize=30:x=(w-text_w)/2:y=(h-text_h)/2",
+        "-t",
+        "1",
+        "-y",
+        test_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
     if os.path.exists(test_path):
         print(f"✅ Successfully wrote test clip ({os.path.getsize(test_path)} bytes)")
     else:
         print("❌ Failed to write test clip - file not created")
 except Exception as e:
-    print(f"❌ MoviePy test failed: {e}")
+    print(f"❌ FFmpeg test failed: {e}")
     print(traceback.format_exc())
 
 print("\n========== DIAGNOSTIC COMPLETE ==========")

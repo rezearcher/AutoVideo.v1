@@ -14,15 +14,15 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
-
 # Create necessary directories
 RUN mkdir -p output secrets fonts
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV GOOGLE_CLOUD_PROJECT=""
+
+# Copy application code - moved after dependency installation for better caching
+COPY . .
 
 # Default command: run in batch mode
 CMD ["python", "main.py", "--batch"] 

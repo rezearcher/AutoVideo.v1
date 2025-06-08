@@ -1,88 +1,56 @@
-# Diagnostic Scripts
+# Scripts Directory
 
-This directory contains diagnostic scripts for troubleshooting and validating various components of the application.
+This directory contains utility scripts for the AI Auto Video Generator project.
 
-## Veo SDK Diagnostic
+## Veo Diagnostic Tool
 
-The `veo_diag.py` script performs comprehensive checks to diagnose issues with Veo SDK initialization.
-
-### Features
-
-- **Import Verification**: Tests all required imports for Veo SDK (google.auth, vertexai, and preview modules)
-- **Authentication Check**: Verifies GCP credentials and project initialization
-- **Dependency Analysis**: Ensures proper module separation from MoviePy
-- **API Connection Test**: Verifies access to Vertex AI APIs and Veo models (with zero token cost)
-- **Storage Access Check**: Tests GCS bucket permissions for read/write operations
-- **Actionable Recommendations**: Provides clear recommendations based on test results
+The `veo_diag.py` script is a comprehensive diagnostic tool for checking the Veo SDK integration.
 
 ### Usage
 
 ```bash
-# Run locally
+# Basic usage
 python scripts/veo_diag.py
 
-# Environment variables (optional)
-export GOOGLE_CLOUD_PROJECT="your-project-id"
-export VERTEX_BUCKET_NAME="your-bucket-name"
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+# Show verbose output
+python scripts/veo_diag.py --verbose
+
+# Output results as JSON
+python scripts/veo_diag.py --json
 ```
 
-### Integration with CI/CD
+### What it checks
 
-The script is integrated into our deployment workflow in `.github/workflows/deploy.yml` to automatically run before deployment, ensuring that the Veo SDK will initialize correctly in the deployed environment.
+1. **Import Functionality**: Verifies all required packages are installed
+2. **Authentication**: Validates GCP credentials and project configuration
+3. **Dependencies**: Checks versions of required dependencies
+4. **API Connection**: Tests connection to the Veo API
+5. **Storage Access**: Verifies access to the GCS bucket for video storage
 
-### Exit Codes
+### Troubleshooting
 
-- `0`: All tests passed successfully
-- `1`: One or more tests failed, check the recommendations for solutions
+If the diagnostic fails, it will provide recommendations for fixing the issues:
 
-### Sample Output
+#### Import Errors
+- Install the required packages: `pip install google-cloud-aiplatform[preview] google-cloud-storage`
+- Make sure you're using Python 3.11 (Python 3.12 has compatibility issues with Veo)
 
-```
-=== Veo SDK Initialization Test Results ===
+#### Authentication Issues
+- Set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to point to your service account key
+- Verify the service account has the necessary permissions for Vertex AI and Storage
 
-IMPORTS TESTS:
-  google.auth: success
-  vertexai: success
-  vertexai_version: 1.46.0
-  vertexai.preview.models: success
-  vertexai.preview.generative_models: success
+#### API Connection Issues
+- Check your quota limits in the Google Cloud Console
+- Verify the Veo model is available in your region
 
-AUTH TESTS:
-  credentials_file: not found (using default credentials)
-  vertexai_init: success
-  actual_project: av-8675309
-  actual_location: us-central1
+#### Storage Access Issues
+- Set the `VERTEX_BUCKET_NAME` environment variable
+- Ensure the bucket exists and the service account has access to it
 
-DEPENDENCIES TESTS:
-  moviepy_compat_importable: true
-  veo_moviepy_coupled: false
+### CI/CD Integration
 
-API TESTS:
-  list_models: success
-  model_count: 124
-  veo_models: ['veo-3.0-generate-preview']
-  veo_model_available: true
-  model_init: success
-  api_ping: initiated
+The diagnostic tool is integrated into the deployment workflow and will prevent deployment if it fails, ensuring that the Veo integration is always working properly.
 
-STORAGE TESTS:
-  bucket_configured: true
-  bucket_exists: true
-  write_test: success
-  read_test: success
-  cleanup: success
+## Other Scripts
 
-=== Recommendations ===
-All tests passed! No recommendations needed.
-```
-
-### Troubleshooting Guide
-
-If the script reports failures, refer to the recommendations section for specific actions to take. Common issues include:
-
-1. **Python Version Incompatibility**: Use Python 3.11 or lower (Veo SDK doesn't support Python 3.12+)
-2. **Missing Dependencies**: Install required packages: `pip install "google-cloud-aiplatform[preview]>=1.96.0"`
-3. **Authentication Issues**: Check service account permissions and credentials
-4. **Project Mismatch**: Ensure GOOGLE_CLOUD_PROJECT matches the actual project where Veo is enabled
-5. **Bucket Access**: Verify the service account has read/write access to the storage bucket 
+- Additional utility scripts will be documented here as they are added. 

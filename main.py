@@ -34,15 +34,9 @@ try:
 except Exception as e:
     print(f"⚠️ Error setting up Google Cloud credentials: {e}")
 
-from image_generator import generate_images
 from story_generator import extract_image_prompts, generate_story, get_openai_client
 from timing_metrics import TimingMetrics
 from topic_manager import TopicManager
-from voiceover_generator import (
-    generate_elevenlabs_tts,
-    generate_google_tts,
-    generate_voiceover,
-)
 from youtube_uploader import upload_video
 
 # Optional import for local video processing fallback
@@ -542,7 +536,7 @@ def health_check_veo():
             ] = "VERTEX_BUCKET_NAME environment variable is not set"
             return jsonify(result), 400
 
-        # Check if the Veo module is available
+        # Check if the Veo module is available - decoupled from MoviePy
         result["details"]["code_available"] = VEOAI_AVAILABLE
         if not VEOAI_AVAILABLE:
             result["status"] = "unavailable"
@@ -551,33 +545,22 @@ def health_check_veo():
             ] = "Veo SDK not installed or initialization failed"
             return jsonify(result), 503
 
-        # Try to initialize the Veo model to verify permissions
+        # Run a diagnostic-light check
         try:
-            from vertexai.preview.generative_models import GenerativeModel
+            import importlib.util
+
+            from vertexai.preview.generative_models import (
+                GenerationConfig,
+                GenerativeModel,
+            )
+
+            # Check for our adapter module
+            adapter_spec = importlib.util.find_spec("app.services.veo_adapter")
+            result["details"]["adapter_available"] = adapter_spec is not None
 
             # Just attempt to load the model (won't make an API call yet)
             model = GenerativeModel("veo-3.0-generate-preview")
             result["details"]["model_init"] = "success"
-
-            # Try to list available models to check API connectivity
-            from vertexai.preview import models
-
-            # Check if the model exists in the list
-            try:
-                model_list = [m.name for m in models.list_models()]
-                veo_models = [m for m in model_list if "veo" in m.lower()]
-
-                if "veo-3.0-generate-preview" in model_list or any(
-                    "veo" in m.lower() for m in model_list
-                ):
-                    result["details"]["model_exists"] = True
-                    result["details"]["available_models"] = veo_models
-                else:
-                    result["details"]["model_exists"] = False
-                    result["details"]["note"] = "Veo models not found in model list"
-            except Exception as e:
-                result["details"]["model_list_error"] = str(e)
-                # Continue with health check even if model listing fails
 
             # Check bucket permissions
             try:
@@ -604,18 +587,35 @@ def health_check_veo():
                 result["status"] = "error"
                 return jsonify(result), 500
 
+            # Try to use the GenerationConfig
+            try:
+                # Verify config creation works properly
+                config = GenerationConfig(
+                    duration_seconds=5,
+                    aspect_ratio="16:9",
+                    sample_count=1,
+                    return_raw_tokens=True,
+                )
+                result["details"]["generation_config"] = "valid"
+            except Exception as e:
+                result["details"]["generation_config_error"] = str(e)
+                # Continue with health check even if config fails
+
             # All checks passed
             result["status"] = "healthy"
+            send_custom_metric("veo_health_check", 1.0, {"status": "healthy"})
             return jsonify(result)
 
         except Exception as e:
             result["status"] = "error"
-            result["details"]["model_init_error"] = str(e)
+            result["details"]["api_error"] = str(e)
+            send_custom_metric("veo_health_check", 0.0, {"status": "error"})
             return jsonify(result), 500
 
     except Exception as e:
         result["status"] = "error"
         result["details"]["error"] = str(e)
+        send_custom_metric("veo_health_check", 0.0, {"status": "error"})
         return jsonify(result), 500
 
 
@@ -1182,45 +1182,19 @@ def generate_video_background(topic):
         logger.info(f"Generating story for topic: {topic}")
         story, _ = generate_story(f"Write a story about {topic}", timeout=60)
 
-        # Extract image prompts
-        set_current_phase("prompt_extraction")
-        logger.info("Extracting image prompts from story")
-        image_prompts = extract_image_prompts(story, num_scenes=5)
-
-        # Generate images
-        set_current_phase("image_generation")
-        logger.info(f"Generating {len(image_prompts)} images")
+        # Prepare output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_dir = f"output/run_{timestamp}"
         os.makedirs(output_dir, exist_ok=True)
 
-        image_paths = generate_images(image_prompts, f"{output_dir}/images")
-
-        # Generate voiceover
-        set_current_phase("voiceover_generation")
-        logger.info("Generating voiceover")
-        audio_path = f"{output_dir}/audio.mp3"
-
-        try:
-            # First try ElevenLabs
-            audio_path = generate_elevenlabs_tts(story, audio_path)
-            logger.info("Generated voiceover using ElevenLabs")
-        except Exception as e:
-            # Fall back to Google TTS
-            logger.warning(
-                f"ElevenLabs TTS failed, falling back to Google TTS: {str(e)}"
-            )
-            audio_path = generate_google_tts(story, audio_path)
-            logger.info("Generated voiceover using Google TTS fallback")
-
-        # Create video
+        # Create video directly with Veo
         set_current_phase("video_creation")
-        logger.info("Creating video")
+        logger.info("Creating video with Veo")
         video_path = f"{output_dir}/video.mp4"
 
-        # Try Veo video generation first if available
+        # Try Veo video generation
         if VEOAI_AVAILABLE and create_veo_video:
-            logger.info("Attempting to create video with Veo AI")
+            logger.info("Creating video with Veo AI")
             try:
                 # Check for VERTEX_BUCKET_NAME which is required for Veo
                 if not os.environ.get("VERTEX_BUCKET_NAME"):
@@ -1235,78 +1209,21 @@ def generate_video_background(topic):
                 logger.error(
                     f"Veo AI dependencies not properly installed: {str(imp_error)}"
                 )
-                logger.info("Falling back to other video creation methods")
                 video_file_path = None
             except ValueError as val_error:
                 logger.error(f"Veo AI configuration error: {str(val_error)}")
-                logger.info("Falling back to other video creation methods")
                 video_file_path = None
             except Exception as veo_error:
                 logger.error(f"Veo video creation failed: {str(veo_error)}")
-                logger.info("Falling back to other video creation methods")
                 video_file_path = None
         else:
-            if os.environ.get("VEO_ENABLED", "false").lower() == "true":
-                logger.warning("VEO_ENABLED=true but Veo is not properly initialized.")
-                logger.info("Check your installation and configuration.")
-            else:
-                logger.info("Veo AI not available, trying alternative methods")
-            video_file_path = None
+            logger.error("Veo AI is not available, cannot create video")
+            raise Exception("Video creation failed: Veo AI not available")
 
-        # If Veo failed, use local video processing if available
-        if (
-            video_file_path is None
-            and LOCAL_VIDEO_PROCESSING_AVAILABLE
-            and LOCAL_RENDER_ALLOWED
-            and create_video
-        ):
-            logger.info("Creating video using local processing")
-            try:
-                video_file_path = create_video(
-                    image_paths, audio_path, story, timestamp, video_path
-                )
-                logger.info(
-                    f"Video created successfully with local processing: {video_file_path}"
-                )
-            except Exception as local_error:
-                logger.error(f"Local video processing failed: {str(local_error)}")
-                video_file_path = None
-
-        # If both Veo and local processing failed, try Vertex AI GPU service as last resort
-        if video_file_path is None and vertex_gpu_service is not None:
-            logger.info("Trying Vertex AI GPU service as last resort")
-            try:
-                job_id = vertex_gpu_service.create_video_job(
-                    image_paths, audio_path, story
-                )
-                logger.info(f"Submitted Vertex AI GPU job with ID: {job_id}")
-
-                # Wait for job completion with timeout
-                status = vertex_gpu_service.wait_for_job_completion(job_id, timeout=600)
-
-                if status.get("status") == "completed":
-                    # Download the video result
-                    logger.info(f"GPU job completed successfully, downloading video")
-                    if vertex_gpu_service.download_video_result(job_id, video_path):
-                        video_file_path = video_path
-                        logger.info(f"Video downloaded successfully: {video_file_path}")
-                    else:
-                        raise Exception("Failed to download video from GPU job")
-                else:
-                    raise Exception(
-                        f"GPU job failed with status: {status.get('status')}"
-                    )
-
-            except Exception as gpu_error:
-                logger.error(f"Vertex AI GPU video creation failed: {str(gpu_error)}")
-                raise Exception(
-                    f"Video creation failed: GPU processing error - {str(gpu_error)}"
-                )
-
-        # If we still don't have a video, all methods failed
+        # If Veo failed, we can't create the video (no more fallbacks)
         if video_file_path is None:
-            logger.error("All video creation methods failed")
-            raise Exception("Video creation failed: no video processing available")
+            logger.error("Veo video creation failed")
+            raise Exception("Video creation failed: Veo processing error")
 
         # Update status
         last_generation_status = "completed"
@@ -1363,51 +1280,22 @@ def debug_endpoint():
 def health_check_tts():
     """Health check for Text-to-Speech services."""
     result = {
-        "status": "unknown",
+        "status": "gone",
+        "message": "TTS service has been retired in favor of Veo direct video generation",
         "timestamp": datetime.now().isoformat(),
-        "services": {
-            "elevenlabs": {"configured": False, "status": "unknown"},
-            "google_tts": {"configured": False, "status": "unknown"},
-        },
     }
+    return jsonify(result), 410
 
-    # Check ElevenLabs configuration
-    elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
-    if elevenlabs_key:
-        result["services"]["elevenlabs"]["configured"] = True
 
-        # Simple check without making an actual API call to avoid using quota
-        if len(elevenlabs_key) > 20:  # Basic validation
-            result["services"]["elevenlabs"]["status"] = "configured"
-        else:
-            result["services"]["elevenlabs"]["status"] = "error"
-            result["services"]["elevenlabs"]["error"] = "API key appears invalid"
-
-    # Check Google TTS configuration
-    google_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if google_creds:
-        result["services"]["google_tts"]["configured"] = True
-
-        # Check if credentials file exists
-        if os.path.exists(google_creds):
-            result["services"]["google_tts"]["status"] = "configured"
-            result["services"]["google_tts"]["credentials_path"] = google_creds
-        else:
-            result["services"]["google_tts"]["status"] = "error"
-            result["services"]["google_tts"][
-                "error"
-            ] = f"Credentials file not found: {google_creds}"
-
-    # Overall status
-    if (
-        result["services"]["elevenlabs"]["status"] == "configured"
-        or result["services"]["google_tts"]["status"] == "configured"
-    ):
-        result["status"] = "healthy"
-    else:
-        result["status"] = "unhealthy"
-
-    return jsonify(result)
+@app.route("/health/image_gen")
+def health_check_image_gen():
+    """Health check for Image Generation services."""
+    result = {
+        "status": "gone",
+        "message": "Image generation service has been retired in favor of Veo direct video generation",
+        "timestamp": datetime.now().isoformat(),
+    }
+    return jsonify(result), 410
 
 
 @app.route("/health/deployment")

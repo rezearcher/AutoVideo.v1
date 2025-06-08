@@ -167,13 +167,8 @@ custom_metrics:
       - key: "reason"
         description: "Rejection reason if applicable"
 
-  - name: "autovideo/images_generated"
-    description: "Number of images generated per pipeline run"
-    type: "GAUGE"
-    value_type: "DOUBLE"
-
-  - name: "autovideo/image_prompts_count"
-    description: "Number of image prompts extracted from story"
+  - name: "autovideo/veo_scenes_generated"
+    description: "Number of Veo scenes generated per pipeline run"
     type: "GAUGE"
     value_type: "DOUBLE"
 

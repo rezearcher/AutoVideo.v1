@@ -33,19 +33,19 @@ python test_api.py
    - Exit code 0 for success, 1 for failure
 
 2. Staging Deployment
-   - Deploys to `av-app-staging`
+   - Deploys to `av-app-staging-939407899550`
    - Resource limits: 2Gi memory, 2 CPU
    - Auto-scaling: 1-5 instances
    - Timeout: 300s
 
 3. Production Deployment
-   - Deploys to `av-app`
+   - Deploys to `av-app-939407899550`
    - Resource limits: 2Gi memory, 2 CPU
    - Auto-scaling: 1-10 instances
    - Timeout: 300s
 
 4. GPU Worker Deployment
-   - Deploys to `av-gpu-worker`
+   - Deploys to `av-gpu-worker-939407899550`
    - Resource limits: 8Gi memory, 4 CPU, 1 GPU
    - Auto-scaling: 0-5 instances
    - Timeout: 600s
@@ -112,7 +112,7 @@ timeout: 600s
 
 ### 1. Production Storage
 ```yaml
-bucket: av-assets
+bucket: av-8675309-video-jobs
 location: us-central1
 storageClass: STANDARD
 versioning: enabled
@@ -123,7 +123,7 @@ lifecycle:
 
 ### 2. Staging Storage
 ```yaml
-bucket: av-assets-staging
+bucket: av-8675309-staging
 location: us-central1
 storageClass: STANDARD
 versioning: enabled

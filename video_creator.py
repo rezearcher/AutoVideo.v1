@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from caption_generator import add_captions_to_video, create_caption_images
 from PIL import Image, ImageDraw, ImageFont
 
 # Use our compatibility module instead of direct imports
@@ -21,7 +22,6 @@ from app.services.moviepy_compat import (
     concatenate_videoclips,
     resize,
 )
-from caption_generator import add_captions_to_video, create_caption_images
 
 # Add new imports for Veo integration
 try:
@@ -31,8 +31,9 @@ try:
         TooManyRequests,
     )
     from google.cloud import storage
-    from vertexai.preview.generative_models import GenerativeModel
+    from vertexai.preview.generative_models import GenerationConfig, GenerativeModel
 
+    # Decoupled from MoviePy availability
     VEOAI_AVAILABLE = True
 except ImportError:
     VEOAI_AVAILABLE = False
@@ -188,7 +189,7 @@ def make_veo_clip(
 ) -> str:
     """
     Generate a video clip using Google's Veo 3 AI with retry logic.
-    Uses LRO (Long Running Operation) as per official Google documentation.
+    Now uses the veo_adapter module for better error handling.
 
     Args:
         prompt (str): Detailed prompt for video generation
@@ -218,75 +219,120 @@ def make_veo_clip(
 
     logger.info(f"Generating Veo video clip with prompt: {prompt[:100]}...")
 
-    # Calculate max wait time for exponential backoff
-    max_wait_time = min(MAX_BACKOFF, 2 ** (retries - 1) * 15)
+    # Set default output directory if not provided
+    if not output_dir:
+        output_dir = os.path.join(os.getcwd(), "output", "veo_clips")
+    os.makedirs(output_dir, exist_ok=True)
 
-    for attempt in range(retries):
-        try:
-            # Initialize the Veo model
-            model = GenerativeModel("veo-3.0-generate-preview")
+    # Try using the adapter module first
+    try:
+        from app.services.veo_adapter import make_clip
 
-            # Generate the video using async LRO pattern
-            logger.info(
-                f"Requesting {duration_sec}s video with aspect ratio {aspect} (attempt {attempt+1}/{retries})..."
-            )
-            start_time = time.time()
+        # Use the adapter to generate the clip
+        local_path = make_clip(prompt, seconds=duration_sec)
 
-            # Launch async operation
-            operation = model.generate_video_async(
-                prompt=prompt,
-                generation_config={
-                    "durationSeconds": duration_sec,
-                    "aspectRatio": aspect,
-                    "sampleCount": 1,  # Must be explicitly set per Google docs
-                },
-                output_storage=f"gs://{bucket}/veo-temp/",
-            )
+        # Move the temp file to the output directory with a descriptive name
+        clip_name = f"veo_clip_{uuid4().hex[:8]}.mp4"
+        final_path = os.path.join(output_dir, clip_name)
+        os.rename(local_path, final_path)
 
-            # Poll for result with timeout (15 minutes max)
-            logger.info("Video generation operation started, waiting for completion...")
-            response = operation.result(timeout=900)  # 15 minute timeout
+        logger.info(f"Veo clip generated and saved to {final_path}")
+        return final_path
 
-            generation_time = time.time() - start_time
-            logger.info(f"Video generation completed in {generation_time:.2f} seconds")
+    except ImportError:
+        logger.warning(
+            "Veo adapter not available, falling back to direct implementation"
+        )
+        # Calculate max wait time for exponential backoff
+        max_wait_time = min(MAX_BACKOFF, 2 ** (retries - 1) * 15)
 
-            # Get the video URI from the response
-            gcs_uri = response.videos[0].gcs_uri
-
-            # Download the video from GCS
-            output_dir = output_dir or "output/veo_clips"
-            os.makedirs(output_dir, exist_ok=True)
-
-            # Create a unique local path
-            clip_id = uuid4().hex[:8]
-            local_path = os.path.join(output_dir, f"veo_clip_{clip_id}.mp4")
-
-            # Download from GCS to local file
-            storage_client = storage.Client()
-            storage_client.download_blob_to_file(gcs_uri, open(local_path, "wb"))
-
-            logger.info(f"Veo clip saved to: {local_path}")
-            return local_path
-
-        except (ResourceExhausted, TooManyRequests, ServiceUnavailable) as quota_error:
-            if attempt < retries - 1:
-                # Calculate backoff with jitter
-                backoff = min(max_wait_time, 2**attempt * 15)
-                jitter = random.uniform(0, 0.1 * backoff)  # 10% jitter
-                wait_time = backoff + jitter
-
-                logger.warning(
-                    f"Veo API quota exceeded or service unavailable. Retrying in {wait_time:.1f} seconds. Error: {str(quota_error)}"
+        for attempt in range(retries):
+            try:
+                # Initialize the Veo model
+                from vertexai.preview.generative_models import (
+                    GenerationConfig,
+                    GenerativeModel,
                 )
-                time.sleep(wait_time)
-            else:
-                logger.error(
-                    f"Veo API failed after {retries} attempts: {str(quota_error)}"
+
+                model = GenerativeModel("veo-3.0-generate-preview")
+
+                # Generate the video using async LRO pattern
+                logger.info(
+                    f"Requesting {duration_sec}s video with aspect ratio {aspect} (attempt {attempt+1}/{retries})..."
                 )
+                start_time = time.time()
+
+                # Launch async operation
+                operation = model.generate_video_async(
+                    prompt=prompt,
+                    generation_config=GenerationConfig(
+                        duration_seconds=duration_sec,
+                        aspect_ratio=aspect,
+                        sample_count=1,  # Must be explicitly set per Google docs
+                    ),
+                    output_storage=f"gs://{bucket}/veo-temp/",
+                )
+
+                # Poll for result with timeout (15 minutes max)
+                logger.info(
+                    "Video generation operation started, waiting for completion..."
+                )
+                response = operation.result(timeout=900)  # 15 minute timeout
+
+                generation_time = time.time() - start_time
+                logger.info(f"Video generated in {generation_time:.1f}s")
+
+                # Get GCS URI from response
+                gcs_uri = None
+                if hasattr(response, "videos") and response.videos:
+                    gcs_uri = response.videos[0].gcs_uri
+                elif (
+                    hasattr(response, "generatedSamples") and response.generatedSamples
+                ):
+                    sample = response.generatedSamples[0]
+                    if hasattr(sample, "video") and sample.video:
+                        gcs_uri = sample.video.uri
+
+                if not gcs_uri:
+                    raise ValueError("No video URI found in response")
+
+                logger.info(f"Video available at: {gcs_uri}")
+
+                # Download the video from GCS
+                from google.cloud import storage
+
+                storage_client = storage.Client()
+
+                # Parse the URI to get bucket and blob path
+                # Format: gs://bucket-name/path/to/object
+                gcs_path = gcs_uri.replace("gs://", "")
+                bucket_name, blob_path = gcs_path.split("/", 1)
+
+                # Get the bucket and blob
+                bucket = storage_client.bucket(bucket_name)
+                blob = bucket.blob(blob_path)
+
+                # Download to a temporary file
+                clip_name = f"veo_clip_{uuid4().hex[:8]}.mp4"
+                local_path = os.path.join(output_dir, clip_name)
+                blob.download_to_filename(local_path)
+
+                logger.info(f"Downloaded video to {local_path}")
+                return local_path
+
+            except (ResourceExhausted, ServiceUnavailable, TooManyRequests) as e:
+                if attempt < retries - 1:
+                    wait_time = min(max_wait_time, 2**attempt * 15)
+                    logger.warning(
+                        f"Rate limit or service unavailable ({str(e)}). Retrying in {wait_time}s..."
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Failed after {retries} attempts: {str(e)}")
+                    raise
+            except Exception as e:
+                logger.error(f"Error generating video: {str(e)}")
                 raise
-        except Exception as e:
-            logger.error(f"Error generating Veo video: {str(e)}")
-            raise
 
 
 def enhance_story_for_video_scenes(
@@ -677,6 +723,7 @@ def ffmpeg_concat(
 def create_veo_video(story: str, output_path: str, num_scenes: int = 5) -> str:
     """
     Create a complete video using Veo from a story.
+    Uses the new scene_splitter module for more reliable scene generation.
 
     Args:
         story (str): The story text
@@ -697,11 +744,40 @@ def create_veo_video(story: str, output_path: str, num_scenes: int = 5) -> str:
 
         # Step 1: Transform story into scene prompts
         logger.info(f"Creating {num_scenes} scene prompts from story...")
-        scenes = enhance_story_for_video_scenes(story, num_scenes)
+
+        # Try to use the new scene splitter module first
+        try:
+            from app.services.scene_splitter import split_into_scenes
+
+            scene_prompts = split_into_scenes(story, max_scenes=num_scenes)
+            scenes = [{"veo_prompt": prompt} for prompt in scene_prompts]
+            logger.info(f"Generated {len(scenes)} scene prompts using scene_splitter")
+        except ImportError:
+            # Fall back to original method if module not available
+            logger.info("Scene splitter not available, using legacy scene enhancement")
+            scenes = enhance_story_for_video_scenes(story, num_scenes)
 
         # Step 2: Generate videos for each scene
         logger.info("Generating individual scene videos...")
-        video_paths = generate_scene_videos(scenes, scenes_dir)
+        video_paths = []
+
+        for i, scene in enumerate(scenes):
+            logger.info(f"Generating video for scene {i+1}/{len(scenes)}")
+            try:
+                prompt = scene["veo_prompt"] if "veo_prompt" in scene else scene
+                video_path = make_veo_clip(
+                    prompt=prompt,
+                    duration_sec=(
+                        8 if i < len(scenes) - 1 else 5
+                    ),  # Last clip is shorter
+                    aspect="16:9",
+                    output_dir=scenes_dir,
+                )
+                video_paths.append(video_path)
+                logger.info(f"Scene {i+1} video generated: {video_path}")
+            except Exception as e:
+                logger.error(f"Error generating video for scene {i+1}: {str(e)}")
+                # Continue with remaining scenes
 
         if not video_paths:
             raise ValueError("No scene videos were generated")
@@ -713,7 +789,7 @@ def create_veo_video(story: str, output_path: str, num_scenes: int = 5) -> str:
             output_path,
             crossfade=True,
             color_grade=True,
-            normalize_audio=True,
+            normalize_audio=False,  # Veo clips don't have audio to normalize
         )
 
         logger.info(f"Final video created: {final_path}")

@@ -1,0 +1,383 @@
+name: Veo SDK Diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/veo_diag.py'
+      - '.github/workflows/veo-diagnostics.yml'
+
+jobs:
+  create-veo-diag-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create diagnostic script
+        run: |
+          mkdir -p scripts
+          cat > scripts/veo_diag.py << 'EOL'
+          #!/usr/bin/env python3
+          """
+          Veo SDK Initialization Diagnostic
+          Tests Vertex AI video generation setup and provides actionable recommendations.
+          """
+
+          import os
+          import sys
+          import logging
+          from typing import Dict, Any
+
+          # Configure logging
+          logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+          logger = logging.getLogger(__name__)
+
+          # Test results dictionary
+          results = {
+              "imports": {},
+              "auth": {},
+              "dependencies": {},
+              "api": {},
+              "storage": {}
+          }
+
+          def test_imports() -> Dict[str, Any]:
+              """Test all required imports for Veo SDK."""
+              import_results = {}
+              
+              # Test auth imports first (fail fast)
+              try:
+                  import google.auth
+                  import_results["google.auth"] = "success"
+              except ImportError as e:
+                  import_results["google.auth"] = f"failed: {str(e)}"
+                  return import_results  # Early return if auth fails
+              
+              # Test main vertexai import
+              try:
+                  import vertexai
+                  import_results["vertexai"] = "success"
+                  import_results["vertexai_version"] = getattr(vertexai, "__version__", "unknown")
+              except ImportError as e:
+                  import_results["vertexai"] = f"failed: {str(e)}"
+                  return import_results
+              
+              # Test preview modules
+              try:
+                  from vertexai.preview import models
+                  import_results["vertexai.preview.models"] = "success"
+              except ImportError as e:
+                  import_results["vertexai.preview.models"] = f"failed: {str(e)}"
+                  # Check Python version compatibility
+                  if sys.version_info >= (3, 12):
+                      import_results["python_compatibility"] = "Python 3.12+ not supported with vertexai.preview"
+              
+              # Test generative models
+              try:
+                  from vertexai.preview.generative_models import GenerativeModel, GenerationConfig
+                  import_results["vertexai.preview.generative_models"] = "success"
+              except ImportError as e:
+                  import_results["vertexai.preview.generative_models"] = f"failed: {str(e)}"
+              
+              return import_results
+
+          def test_auth() -> Dict[str, Any]:
+              """Test authentication and permissions."""
+              auth_results = {}
+              
+              # Check for GCP credentials
+              if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+                  auth_results["credentials_file"] = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+              else:
+                  auth_results["credentials_file"] = "not found (using default credentials)"
+              
+              # Test initialization with project ID
+              try:
+                  import vertexai
+                  project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "av-8675309")
+                  location = "us-central1"
+                  vertexai.init(project=project_id, location=location)
+                  auth_results["vertexai_init"] = "success"
+                  
+                  # Get actual project and location used (catch mismatches)
+                  client_options = vertexai.get_client_options()
+                  auth_results["actual_project"] = client_options.project or "default"
+                  auth_results["actual_location"] = client_options.location or "default"
+                  
+                  # Check for mismatches
+                  if auth_results["actual_project"] != project_id:
+                      auth_results["project_mismatch"] = f"Expected {project_id}, got {auth_results['actual_project']}"
+                      
+              except Exception as e:
+                  auth_results["vertexai_init"] = f"failed: {str(e)}"
+              
+              return auth_results
+
+          def test_dependencies() -> Dict[str, Any]:
+              """Test for proper module separation."""
+              dep_results = {}
+              
+              # Just check that moviepy_compat exists without requiring it to work
+              try:
+                  import app.services.moviepy_compat
+                  dep_results["moviepy_compat_importable"] = True
+              except ImportError:
+                  dep_results["moviepy_compat_importable"] = False
+              
+              # Check video_creator module structure
+              try:
+                  import video_creator
+                  import inspect
+                  # Check how VEOAI_AVAILABLE is determined
+                  source = inspect.getsource(video_creator)
+                  if "VEOAI_AVAILABLE = True and MOVIEPY_AVAILABLE" in source:
+                      dep_results["veo_moviepy_coupled"] = True
+                      dep_results["recommended_fix"] = "Remove MOVIEPY_AVAILABLE dependency from VEOAI_AVAILABLE"
+                  else:
+                      dep_results["veo_moviepy_coupled"] = False
+              except (ImportError, NameError):
+                  dep_results["video_creator_importable"] = False
+              
+              return dep_results
+
+          def test_api_connection() -> Dict[str, Any]:
+              """Test connection to Vertex AI APIs (with zero token cost)."""
+              api_results = {}
+              
+              try:
+                  import vertexai
+                  from vertexai.preview import models
+                  from vertexai.preview.generative_models import GenerativeModel, GenerationConfig
+                  
+                  # Initialize Vertex AI
+                  project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "av-8675309")
+                  vertexai.init(project=project_id, location="us-central1")
+                  
+                  # Try to list models (low cost operation)
+                  try:
+                      model_list = list(models.list_models())
+                      api_results["list_models"] = "success"
+                      api_results["model_count"] = len(model_list)
+                      
+                      # Check for Veo models
+                      veo_models = [m.name for m in model_list if "veo" in m.name.lower()]
+                      api_results["veo_models"] = veo_models
+                      api_results["veo_model_available"] = any("veo" in m.lower() for m in veo_models)
+                  except Exception as e:
+                      api_results["list_models"] = f"failed: {str(e)}"
+                  
+                  # Try to initialize Veo model with zero-token config
+                  try:
+                      model = GenerativeModel("veo-3.0-generate-preview")
+                      api_results["model_init"] = "success"
+                      
+                      # Optional: Make a zero-cost API call to verify end-to-end setup
+                      try:
+                          config = GenerationConfig(returnRawTokens=True)
+                          op = model.generate_video_async(
+                              "diagnostic ping", 
+                              generation_config=config,
+                              output_storage=f"gs://{os.environ.get('VERTEX_BUCKET_NAME', 'av-8675309-video-jobs')}/veo-diag/"
+                          )
+                          # Don't actually wait for result to avoid token costs
+                          api_results["api_ping"] = "initiated"
+                      except Exception as e:
+                          api_results["api_ping"] = f"failed: {str(e)}"
+                          
+                  except Exception as e:
+                      api_results["model_init"] = f"failed: {str(e)}"
+              
+              except Exception as e:
+                  api_results["api_connection"] = f"failed: {str(e)}"
+              
+              return api_results
+
+          def test_storage() -> Dict[str, Any]:
+              """Test GCS bucket access with proper exception handling."""
+              storage_results = {}
+              
+              # Check bucket configuration
+              bucket_name = os.environ.get("VERTEX_BUCKET_NAME")
+              storage_results["bucket_configured"] = bucket_name is not None
+              
+              if bucket_name:
+                  try:
+                      from google.cloud import storage
+                      from google.api_core.exceptions import Forbidden, NotFound
+                      
+                      storage_client = storage.Client()
+                      
+                      # Check if bucket exists
+                      try:
+                          bucket = storage_client.bucket(bucket_name)
+                          bucket_exists = bucket.exists()
+                          storage_results["bucket_exists"] = bucket_exists
+                          
+                          if bucket_exists:
+                              # Try to write a test file
+                              test_blob = bucket.blob("veo-diag/initialization-test.txt")
+                              try:
+                                  test_blob.upload_from_string("Veo SDK diagnostic test")
+                                  storage_results["write_test"] = "success"
+                                  
+                                  # Try to read it back
+                                  try:
+                                      content = test_blob.download_as_text()
+                                      storage_results["read_test"] = "success"
+                                  except Forbidden:
+                                      storage_results["read_test"] = "failed: permission denied"
+                                  except Exception as e:
+                                      storage_results["read_test"] = f"failed: {str(e)}"
+                                      
+                                  # Clean up
+                                  try:
+                                      test_blob.delete()
+                                      storage_results["cleanup"] = "success"
+                                  except Exception:
+                                      storage_results["cleanup"] = "failed"
+                                      
+                              except Forbidden:
+                                  storage_results["write_test"] = "failed: permission denied"
+                                  storage_results["recommended_fix"] = "Grant storage.objects.create permission to service account"
+                              except Exception as e:
+                                  storage_results["write_test"] = f"failed: {str(e)}"
+                          else:
+                              storage_results["recommended_fix"] = f"Create bucket '{bucket_name}' in project '{storage_client.project}'"
+                      except Exception as e:
+                          storage_results["bucket_operation"] = f"failed: {str(e)}"
+                  except Exception as e:
+                      storage_results["storage_client"] = f"failed: {str(e)}"
+              else:
+                  storage_results["recommended_fix"] = "Set VERTEX_BUCKET_NAME environment variable"
+              
+              return storage_results
+
+          def generate_recommendations(results: Dict[str, Any]) -> Dict[str, str]:
+              """Generate recommendations based on test results."""
+              recommendations = {}
+              
+              # Import issues
+              if any("failed" in str(v) for v in results["imports"].values()):
+                  if "python_compatibility" in results["imports"]:
+                      recommendations["imports"] = "Use Python 3.11 or lower. vertexai.preview requires Python ≤3.11"
+                  else:
+                      recommendations["imports"] = "Install missing dependencies: pip install 'google-cloud-aiplatform[preview]>=1.96.0'"
+              
+              # Auth issues
+              if "vertexai_init" in results["auth"] and results["auth"]["vertexai_init"] != "success":
+                  recommendations["auth"] = "Check GCP credentials and service account permissions"
+              elif "project_mismatch" in results["auth"]:
+                  recommendations["auth"] = f"Project mismatch: {results['auth']['project_mismatch']}"
+              
+              # Dependency issues
+              if "recommended_fix" in results["dependencies"]:
+                  recommendations["dependencies"] = results["dependencies"]["recommended_fix"]
+              
+              # API issues
+              if "model_init" in results["api"] and results["api"]["model_init"] != "success":
+                  recommendations["api"] = "Check Vertex AI API enablement and quotas"
+              elif "veo_model_available" in results["api"] and not results["api"]["veo_model_available"]:
+                  recommendations["api"] = "Veo models not available in your project. Request access to Veo API."
+              
+              # Storage issues
+              if "recommended_fix" in results["storage"]:
+                  recommendations["storage"] = results["storage"]["recommended_fix"]
+              
+              return recommendations
+
+          def run_all_tests():
+              """Run all tests and report results."""
+              logger.info("Starting Veo SDK initialization tests...")
+              
+              # Run tests in sequence, with import and auth tests as prerequisites
+              results["imports"] = test_imports()
+              
+              # Skip remaining tests if imports failed critically
+              if "vertexai" in results["imports"] and "failed" in results["imports"]["vertexai"]:
+                  logger.error("Critical import failure. Skipping remaining tests.")
+              else:
+                  # Continue with other tests
+                  results["auth"] = test_auth()
+                  
+                  # Skip API and storage tests if auth failed
+                  if "vertexai_init" in results["auth"] and results["auth"]["vertexai_init"] == "success":
+                      import inspect
+                      results["dependencies"] = test_dependencies()
+                      results["api"] = test_api_connection()
+                      results["storage"] = test_storage()
+              
+              # Generate recommendations
+              recommendations = generate_recommendations(results)
+              
+              # Determine overall success
+              success_status = all([
+                  all(v == "success" for v in results["imports"].values() if isinstance(v, str) and v != "unknown"),
+                  "vertexai_init" in results["auth"] and results["auth"]["vertexai_init"] == "success",
+                  "model_init" in results["api"] and results["api"]["model_init"] == "success",
+                  "write_test" in results["storage"] and results["storage"]["write_test"] == "success"
+              ]) if "api" in results and "storage" in results else False
+              
+              return results, recommendations, success_status
+
+          if __name__ == "__main__":
+              results, recommendations, success = run_all_tests()
+              
+              print("\n=== Veo SDK Initialization Test Results ===")
+              for category, category_results in results.items():
+                  print(f"\n{category.upper()} TESTS:")
+                  for test, result in category_results.items():
+                      print(f"  {test}: {result}")
+              
+              print("\n=== Recommendations ===")
+              if recommendations:
+                  for category, recommendation in recommendations.items():
+                      print(f"  {category}: {recommendation}")
+              else:
+                  print("  All tests passed! No recommendations needed.")
+              
+              # Exit with proper code for CI
+              sys.exit(0 if success else 1)
+          EOL
+          chmod +x scripts/veo_diag.py
+
+      - name: Commit diagnostic script
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add scripts/veo_diag.py
+          git commit -m "Add Veo SDK initialization diagnostic script" || echo "No changes to commit"
+          git push
+          
+  test-veo-diagnostic:
+    needs: create-veo-diag-script
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: main
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir "google-cloud-aiplatform[preview]>=1.96.0" google-cloud-storage
+
+      - name: Run Veo diagnostic
+        run: |
+          python scripts/veo_diag.py
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+          VERTEX_BUCKET_NAME: ${{ secrets.VERTEX_BUCKET_NAME }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }} 

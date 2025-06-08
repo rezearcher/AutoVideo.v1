@@ -14,7 +14,7 @@ Real-time visibility into resource availability across all regions.
 
 ```bash
 # Enhanced quota monitoring
-curl https://av-8675309-avtofnzqwa-uc.a.run.app/health/quota
+curl https://av-app-939407899550.us-central1.run.app/health/quota
 
 # Response includes:
 # - available_gpu_options: GPU availability per region
@@ -28,10 +28,10 @@ Track the intelligent fallback system execution.
 
 ```bash
 # Check current video generation status with fallback info
-curl https://av-8675309-avtofnzqwa-uc.a.run.app/status
+curl https://av-app-939407899550.us-central1.run.app/status
 
 # Monitor specific job across regions
-curl https://av-8675309-avtofnzqwa-uc.a.run.app/job/<job_id>/status
+curl https://av-app-939407899550.us-central1.run.app/job/<job_id>/status
 ```
 
 ## 📊 Regional Performance Monitoring
@@ -109,10 +109,10 @@ echo "🔍 Multi-Region Health Check"
 echo "=================================="
 
 # Check quota across all regions
-curl -s https://av-8675309-avtofnzqwa-uc.a.run.app/health/quota | jq .
+curl -s https://av-app-939407899550.us-central1.run.app/health/quota | jq .
 
 # Check current generation status
-curl -s https://av-8675309-avtofnzqwa-uc.a.run.app/status | jq .
+curl -s https://av-app-939407899550.us-central1.run.app/status | jq .
 
 # Regional Vertex AI job status
 for region in us-central1 us-west1 us-east1; do

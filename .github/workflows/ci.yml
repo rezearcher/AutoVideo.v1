@@ -18,21 +18,25 @@ jobs:
       WORKLOAD_IDENTITY_PROVIDER: projects/939407899550/locations/global/workloadIdentityPools/github-pool/providers/github-provider
       SERVICE_ACCOUNT: github-actions@av-8675309.iam.gserviceaccount.com
     
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.11"]
+    
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python 3.11
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: ${{ matrix.python-version }}
     
     - name: Cache pip dependencies
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ matrix.python-version }}
         restore-keys: |
-          ${{ runner.os }}-pip-
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
     
     - name: Install dependencies
       run: |
@@ -50,27 +54,24 @@ jobs:
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v2
     
-    - name: Run GPU compatibility unit tests
-      run: |
-        python -m pytest test_vertex_gpu_compatibility.py -v --tb=short
-      env:
-        PYTHONPATH: .
-    
-    - name: Run unit tests with coverage
+    - name: Run unit tests with coverage (Python 3.12)
+      if: matrix.python-version == '3.12'
       run: |
         python -m pytest test_vertex_gpu_compatibility.py --cov=vertex_gpu_service --cov-report=xml --cov-report=term-missing
       env:
         PYTHONPATH: .
     
-    - name: Run TTS fallback tests
+    - name: Run Veo diagnostic tests (Python 3.11 only)
+      if: matrix.python-version == '3.11'
       run: |
-        python test_tts_fallback.py
+        python scripts/veo_diag.py
       env:
         PYTHONPATH: .
         GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
-        ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        VERTEX_BUCKET_NAME: av-app-artifacts
     
-    - name: Verify Veo initialization
+    - name: Verify Veo initialization (Python 3.11 only)
+      if: matrix.python-version == '3.11'
       run: |
         python -c "import vertexai
         from vertexai.preview.generative_models import GenerativeModel
@@ -90,6 +91,7 @@ jobs:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
     
     - name: Upload coverage to Codecov
+      if: matrix.python-version == '3.12'
       uses: codecov/codecov-action@v3
       with:
         file: ./coverage.xml

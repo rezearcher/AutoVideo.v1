@@ -250,7 +250,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install --no-cache-dir "google-cloud-aiplatform[preview]>=1.96.0" google-cloud-storage
-        python scripts/veo_diag.py || echo "Veo diagnostic failed - check logs for details"
+        python scripts/veo_diag.py
       env:
         GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
         VERTEX_BUCKET_NAME: ${{ secrets.VERTEX_BUCKET_NAME }}

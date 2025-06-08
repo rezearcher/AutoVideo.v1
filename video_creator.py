@@ -33,7 +33,7 @@ try:
     from google.cloud import storage
     from vertexai.preview.generative_models import GenerativeModel
 
-    VEOAI_AVAILABLE = True and MOVIEPY_AVAILABLE
+    VEOAI_AVAILABLE = True
 except ImportError:
     VEOAI_AVAILABLE = False
 

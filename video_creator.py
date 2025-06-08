@@ -17,7 +17,7 @@ from app.services.moviepy_compat import (
     VideoFileClip,
     concatenate_videoclips,
     resize,
-    MOVIEPY_AVAILABLE
+    MOVIEPY_AVAILABLE,
 )
 from PIL import Image, ImageDraw, ImageFont
 

@@ -276,7 +276,7 @@ jobs:
         key: aiplatform-${{ hashFiles('requirements.txt') }}
         
     - name: Install deps for smoke test
-      run: pip install --no-cache-dir google-cloud-aiplatform==1.46.3
+      run: pip install --no-cache-dir google-cloud-aiplatform==1.96.0
 
     - name: Check Veo token quota
       run: |

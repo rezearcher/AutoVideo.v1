@@ -33,9 +33,12 @@ def bootstrap():
         bucket_name = os.getenv("VERTEX_BUCKET_NAME", f"{project_id}-video-jobs")
         logger.info(f"Using bucket name: {bucket_name} for Vertex GPU service")
 
-        gpu_service_instance = VertexGPUJobService(
+        service = VertexGPUJobService(
             project_id=project_id, region="us-central1", bucket_name=bucket_name
         )
+        
+        # Assign to global variable
+        gpu_service_instance = service
 
         logger.info("✅ VertexGPUJobService bootstrapped successfully")
         return gpu_service_instance
@@ -51,9 +54,9 @@ def bootstrap():
 
 def get_instance():
     """Get the VertexGPUJobService instance or initialize it if needed"""
-    global gpu_service_instance
-
-    if gpu_service_instance is None:
-        return bootstrap()
-
-    return gpu_service_instance
+    result = gpu_service_instance
+    
+    if result is None:
+        result = bootstrap()
+    
+    return result

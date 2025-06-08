@@ -16,8 +16,19 @@ class Settings:
     """Application settings loaded from environment variables."""
 
     # Google Cloud settings
-    GCP_PROJECT: str = os.environ.get("GCP_PROJECT", "")
+    GCP_PROJECT: str = os.environ.get("GCP_PROJECT", "av-8675309")
+    GCP_PROJECT_NUM: str = os.environ.get("GCP_PROJECT_NUM", "939407899550")
+    GCP_PRIMARY_REGION: str = os.environ.get("GCP_PRIMARY_REGION", "us-central1")
+    GCP_FALLBACK_REGIONS: list = os.environ.get(
+        "GCP_FALLBACK_REGIONS", "us-west1,us-east1,asia-southeast1,europe-west1"
+    ).split(",")
     GCS_BUCKET_NAME: str = os.environ.get("GCS_BUCKET_NAME", "")
+
+    # Vertex AI settings
+    VERTEX_BUCKET_NAME: str = os.environ.get(
+        "VERTEX_BUCKET_NAME", f"{GCP_PROJECT}-video-jobs"
+    )
+    VERTEX_MACHINE_TYPE: str = os.environ.get("VERTEX_MACHINE_TYPE", "g2-standard-8")
 
     # Service enablement flags
     VEO_ENABLED: bool = os.environ.get("VEO_ENABLED", "false").lower() == "true"
@@ -42,6 +53,16 @@ class Settings:
     AUDIO_NORMALIZATION_LEVEL: float = float(
         os.environ.get("AUDIO_NORMALIZATION_LEVEL", "-16.0")
     )
+
+    # Service URL patterns
+    CLOUD_RUN_URL_TEMPLATE: str = "https://av-app-{project_num}.{region}.run.app"
+
+    @property
+    def CLOUD_RUN_URL(self) -> str:
+        """Get the Cloud Run URL for the current project."""
+        return self.CLOUD_RUN_URL_TEMPLATE.format(
+            project_num=self.GCP_PROJECT_NUM, region=self.GCP_PRIMARY_REGION
+        )
 
     # Override settings with environment variables
     def __init__(self):

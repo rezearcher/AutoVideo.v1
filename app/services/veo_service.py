@@ -130,6 +130,32 @@ class VeoService:
             logger.warning(f"Error checking token usage: {e}")
             return 0
 
+    def _estimate_tokens_for_prompt(self, prompt: str) -> int:
+        """
+        Estimate the number of tokens needed for a video generation prompt.
+        This is a simplified estimation based on prompt length.
+
+        Args:
+            prompt: The video generation prompt
+
+        Returns:
+            Estimated token count (with safety margin)
+        """
+        # Rough estimate: 1 token ≈ 4 characters + safety margin
+        # Add 50% safety margin to avoid 429 errors
+        char_count = len(prompt)
+        base_estimate = char_count // 4
+        return int(base_estimate * 1.5) + 10  # Add fixed safety margin
+
+    def _sleep_to_next_minute(self):
+        """
+        Sleep until the start of the next minute to get a fresh quota window.
+        """
+        current_second = datetime.now(timezone.utc).second
+        sleep_time = 60 - current_second + 1
+        logger.info(f"Sleeping for {sleep_time}s until next quota window")
+        time.sleep(sleep_time)
+
     def _wait_for_token_availability(self, tokens_needed: int) -> bool:
         """
         Wait until enough tokens are available within the per-minute quota.
@@ -154,16 +180,8 @@ class VeoService:
                 )
                 return True
 
-            # Wait until the start of the next minute for quota reset
-            current_second = datetime.now(timezone.utc).second
-            sleep_time = 60 - current_second + 1
-
-            logger.info(
-                f"Veo tokens limited ({current_usage}/{self._max_tokens_per_minute}, "
-                f"need {tokens_needed}). Waiting {sleep_time}s for next quota window."
-            )
-
-            time.sleep(sleep_time)
+            # Hard cap: If we don't have enough tokens, wait for the next minute
+            self._sleep_to_next_minute()
             wait_count += 1
 
         logger.warning(
@@ -255,9 +273,27 @@ class VeoService:
                 logger.info(f"Using cached video for prompt: '{prompt[:30]}...'")
                 return cached_url
 
-        # Estimate token usage based on duration and complexity if not provided
+        # Estimate token usage based on prompt length and duration if not provided
         if estimated_tokens is None:
-            estimated_tokens = duration_seconds * 8  # rough estimate
+            prompt_tokens = self._estimate_tokens_for_prompt(enhanced_prompt)
+            duration_factor = max(
+                1, duration_seconds // 5
+            )  # Longer videos use more tokens
+            estimated_tokens = prompt_tokens * duration_factor
+            logger.info(f"Estimated tokens for video generation: {estimated_tokens}")
+
+        # Hard-cap token burst per minute
+        # Check current usage and wait if we would exceed the per-minute limit
+        current_usage = self._get_tokens_in_use()
+        if (
+            current_usage + estimated_tokens > self._max_tokens_per_minute - 2
+        ):  # 2-token safety margin
+            logger.info(
+                f"Current token usage ({current_usage}/{self._max_tokens_per_minute}) "
+                f"would exceed limit with additional {estimated_tokens} tokens"
+            )
+            # Wait until next minute for quota reset
+            self._sleep_to_next_minute()
 
         # Check and wait for quota if requested
         if check_quota:

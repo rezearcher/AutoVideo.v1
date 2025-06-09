@@ -90,11 +90,13 @@ def make_clip(
     # Maximum retry attempts for quota-related errors
     max_attempts = 5
     backoff_factor = 2
-    
+
     for attempt in range(max_attempts):
         try:
             # Check if we have enough tokens before proceeding
-            tokens_needed = 1  # Count each request as 1 token since we're limited by requests/min
+            tokens_needed = (
+                1  # Count each request as 1 token since we're limited by requests/min
+            )
             _wait_for_tokens(tokens_needed)
 
             # Initialize the model
@@ -151,17 +153,21 @@ def make_clip(
             raise ValueError("Veo response didn't contain video data")
 
         except (ResourceExhausted, TooManyRequests) as e:
-            logger.warning(f"Veo API quota error (attempt {attempt+1}/{max_attempts}): {str(e)}")
+            logger.warning(
+                f"Veo API quota error (attempt {attempt+1}/{max_attempts}): {str(e)}"
+            )
             # Update for longer wait on quota issues
             _token_usage["used_this_minute"] = TOKEN_LIMIT_PER_MIN
-            
+
             if attempt < max_attempts - 1:
                 # Calculate exponential backoff time
-                wait_time = 60 * (backoff_factor ** attempt)  # Exponential backoff
+                wait_time = 60 * (backoff_factor**attempt)  # Exponential backoff
                 logger.info(f"Waiting {wait_time}s before retry...")
                 time.sleep(wait_time)
             else:
-                logger.error(f"Failed after {max_attempts} attempts due to quota limits.")
+                logger.error(
+                    f"Failed after {max_attempts} attempts due to quota limits."
+                )
                 raise
 
         except Exception as e:

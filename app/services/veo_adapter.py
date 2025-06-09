@@ -16,7 +16,7 @@ from vertexai.preview.generative_models import GenerationConfig, GenerativeModel
 logger = logging.getLogger(__name__)
 
 # Constants
-VEO_MODEL = os.environ.get("VEO_MODEL", "veo-3.0-generate-preview")
+VEO_MODEL = os.environ.get("VEO_MODEL", "veo-2.0-generate-001")
 VERTEX_BUCKET_NAME = os.environ.get("VERTEX_BUCKET_NAME")
 DEFAULT_DURATION = 8
 TOKEN_LIMIT_PER_MIN = 60  # More conservative token limit (was 180)
@@ -54,7 +54,7 @@ def make_clip(
     return_raw_tokens: bool = False,
 ) -> str:
     """
-    Generate a video clip using Google's Veo 3 AI.
+    Generate a video clip using Google's Veo AI.
 
     Args:
         prompt (str): Detailed prompt for video generation

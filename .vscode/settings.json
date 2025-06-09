@@ -1,0 +1,11 @@
+{
+    "python.defaultInterpreterPath": "/home/rez/Projects/AI-Auto-Video-Generator/venv/bin/python",
+    "python.languageServer": "Pylance",
+    "terminal.integrated.env.linux": {
+        "PYTHONHOME": "",
+        "PYTHONPATH": ""
+    },
+    "python.analysis.extraPaths": [
+        "/home/rez/Projects/AI-Auto-Video-Generator"
+    ]
+} 

@@ -47,6 +47,16 @@ def check_model_visibility(project_id: str, model_name: str = "veo-3.0-generate-
         logger.error(f"❌ Model {model_name} is NOT visible to your project")
         logger.error(f"Error: {stderr.strip()}")
         logger.error("Your project may not be on the allow-list for this model")
+        
+        # Try an alternative check with the REST API
+        logger.info("Trying alternative check with REST API...")
+        cmd = f"gcloud ai models list --project={project_id} --region=us-central1 --filter=\"displayName:{model_name}\" --format=json"
+        exit_code, stdout, stderr = run_command(cmd)
+        
+        if exit_code == 0 and model_name in stdout:
+            logger.info(f"✅ Model {model_name} found in list response")
+            return True
+        
         return False
 
 def check_veo_2_model_visibility(project_id: str) -> bool:
@@ -78,7 +88,15 @@ def check_service_account_role(project_id: str) -> bool:
     
     try:
         policy = json.loads(stdout)
-        for binding in policy.get("bindings", []):
+        
+        # The policy format could be a list or an object with 'bindings' field
+        bindings = []
+        if isinstance(policy, list):
+            bindings = policy
+        elif isinstance(policy, dict) and "bindings" in policy:
+            bindings = policy.get("bindings", [])
+        
+        for binding in bindings:
             if binding.get("role") == "roles/aiplatform.user" and service_account in binding.get("members", []):
                 logger.info(f"✅ Service account has aiplatform.user role")
                 return True
@@ -121,6 +139,7 @@ def try_zero_token_request(model_name: str = "veo-2.0-generate-001") -> bool:
         
         if exit_code != 0:
             logger.error(f"❌ Failed to import required packages: {stdout}")
+            logger.error("Skipping zero-token test due to import failure")
             return False
         
         # Create a temporary test script
@@ -128,22 +147,31 @@ def try_zero_token_request(model_name: str = "veo-2.0-generate-001") -> bool:
         with open(test_script, "w") as f:
             f.write(f"""
 import os
-from vertexai.preview.generative_models import GenerationConfig, GenerativeModel
+import sys
 
-# Force region to us-central1
-import vertexai
-vertexai.init(project=os.environ.get("GOOGLE_CLOUD_PROJECT"), location="us-central1")
-
-# Use minimal tokens
-model = GenerativeModel("{model_name}")
-config = GenerationConfig(temperature=0.1, max_output_tokens=1, top_p=0.1, top_k=1)
 try:
-    response = model.generate_content("test", generation_config=config)
-    print("✅ API request succeeded!")
-    exit(0)
+    from vertexai.preview.generative_models import GenerationConfig, GenerativeModel
+    
+    # Force region to us-central1
+    import vertexai
+    vertexai.init(project=os.environ.get("GOOGLE_CLOUD_PROJECT"), location="us-central1")
+    
+    # Use minimal tokens
+    model = GenerativeModel("{model_name}")
+    config = GenerationConfig(temperature=0.1, max_output_tokens=1, top_p=0.1, top_k=1)
+    try:
+        response = model.generate_content("test", generation_config=config)
+        print("✅ API request succeeded!")
+        sys.exit(0)
+    except Exception as e:
+        print(f"❌ API request failed: {{e}}")
+        sys.exit(1)
+except ImportError as e:
+    print(f"❌ Import error: {{e}}")
+    sys.exit(1)
 except Exception as e:
-    print(f"❌ API request failed: {{e}}")
-    exit(1)
+    print(f"❌ Unexpected error: {{e}}")
+    sys.exit(1)
 """)
         
         # Run the test script
@@ -151,18 +179,23 @@ except Exception as e:
         exit_code, stdout, stderr = run_command(cmd)
         
         # Clean up
-        os.remove(test_script)
+        if os.path.exists(test_script):
+            os.remove(test_script)
         
         if exit_code == 0 and "succeeded" in stdout:
             logger.info("✅ Zero-token request succeeded!")
             return True
         else:
             logger.error(f"❌ Zero-token request failed:")
-            logger.error(stdout)
+            for line in stdout.strip().split("\n"):
+                logger.error(line)
             return False
     
     except Exception as e:
         logger.error(f"❌ Error during zero-token test: {e}")
+        # Clean up if the file still exists
+        if 'test_script' in locals() and os.path.exists(test_script):
+            os.remove(test_script)
         return False
 
 def grant_service_account_role(project_id: str) -> bool:

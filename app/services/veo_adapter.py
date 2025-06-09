@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 VEO_MODEL = os.environ.get("VEO_MODEL", "veo-2.0-generate-001")
 VERTEX_BUCKET_NAME = os.environ.get("VERTEX_BUCKET_NAME")
 DEFAULT_DURATION = 8
-TOKEN_LIMIT_PER_MIN = 60  # More conservative token limit (was 180)
+TOKEN_LIMIT_PER_MIN = 10
 
 # Cache for token usage
 _token_usage = {"used_this_minute": 0, "last_reset": time.time()}
@@ -87,73 +87,86 @@ def make_clip(
         generation_config = GenerationConfig(temperature=0.4)
         return "diagnostic_success"
 
-    try:
-        # Check if we have enough tokens before proceeding
-        tokens_needed = 15  # Approximate token cost for a Veo request
-        _wait_for_tokens(tokens_needed)
+    # Maximum retry attempts for quota-related errors
+    max_attempts = 5
+    backoff_factor = 2
+    
+    for attempt in range(max_attempts):
+        try:
+            # Check if we have enough tokens before proceeding
+            tokens_needed = 1  # Count each request as 1 token since we're limited by requests/min
+            _wait_for_tokens(tokens_needed)
 
-        # Initialize the model
-        model = GenerativeModel(VEO_MODEL)
+            # Initialize the model
+            model = GenerativeModel(VEO_MODEL)
 
-        # Create generation config
-        generation_config = GenerationConfig(
-            temperature=0.4,  # Lower temperature for more predictable results
-            max_output_tokens=8192,
-        )
+            # Create generation config
+            generation_config = GenerationConfig(
+                temperature=0.4,  # Lower temperature for more predictable results
+                max_output_tokens=8192,
+            )
 
-        # Full prompt template
-        full_prompt = f"""
-        Create a high-quality, cinematic video clip that's exactly {duration_sec} seconds long.
-        
-        Scene description:
-        {prompt}
-        
-        Make it visually stunning with realistic lighting, depth of field, and camera movement.
-        The style should be photorealistic and cinematic.
-        """
+            # Full prompt template
+            full_prompt = f"""
+            Create a high-quality, cinematic video clip that's exactly {duration_sec} seconds long.
+            
+            Scene description:
+            {prompt}
+            
+            Make it visually stunning with realistic lighting, depth of field, and camera movement.
+            The style should be photorealistic and cinematic.
+            """
 
-        # Log the request
-        logger.info(f"Generating Veo clip: {clip_id} - Duration: {duration_sec}s")
-        logger.info(f"Prompt: {prompt[:100]}...")
+            # Log the request
+            logger.info(f"Generating Veo clip: {clip_id} - Duration: {duration_sec}s")
+            logger.info(f"Prompt: {prompt[:100]}...")
 
-        # Generate the video
-        start_time = time.time()
-        response = model.generate_content(
-            full_prompt,
-            generation_config=generation_config,
-            stream=False,
-        )
+            # Generate the video
+            start_time = time.time()
+            response = model.generate_content(
+                full_prompt,
+                generation_config=generation_config,
+                stream=False,
+            )
 
-        # Update token usage
-        _token_usage["used_this_minute"] += tokens_needed
+            # Update token usage
+            _token_usage["used_this_minute"] += tokens_needed
 
-        # Process the response
-        if hasattr(response, "candidates") and response.candidates:
-            for candidate in response.candidates:
-                for part in candidate.content.parts:
-                    if hasattr(part, "video") and part.video:
-                        # Save the video to the specified path
-                        with open(output_path, "wb") as f:
-                            f.write(part.video.data)
+            # Process the response
+            if hasattr(response, "candidates") and response.candidates:
+                for candidate in response.candidates:
+                    for part in candidate.content.parts:
+                        if hasattr(part, "video") and part.video:
+                            # Save the video to the specified path
+                            with open(output_path, "wb") as f:
+                                f.write(part.video.data)
 
-                        generation_time = time.time() - start_time
-                        logger.info(
-                            f"✅ Veo clip generated in {generation_time:.1f}s: {output_path}"
-                        )
-                        return output_path
+                            generation_time = time.time() - start_time
+                            logger.info(
+                                f"✅ Veo clip generated in {generation_time:.1f}s: {output_path}"
+                            )
+                            return output_path
 
-        # If we get here, the response didn't contain a video
-        raise ValueError("Veo response didn't contain video data")
+            # If we get here, the response didn't contain a video
+            raise ValueError("Veo response didn't contain video data")
 
-    except (ResourceExhausted, TooManyRequests) as e:
-        logger.warning(f"Veo API quota error: {str(e)}")
-        # Update for longer wait on quota issues
-        _token_usage["used_this_minute"] = TOKEN_LIMIT_PER_MIN
-        raise
+        except (ResourceExhausted, TooManyRequests) as e:
+            logger.warning(f"Veo API quota error (attempt {attempt+1}/{max_attempts}): {str(e)}")
+            # Update for longer wait on quota issues
+            _token_usage["used_this_minute"] = TOKEN_LIMIT_PER_MIN
+            
+            if attempt < max_attempts - 1:
+                # Calculate exponential backoff time
+                wait_time = 60 * (backoff_factor ** attempt)  # Exponential backoff
+                logger.info(f"Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"Failed after {max_attempts} attempts due to quota limits.")
+                raise
 
-    except Exception as e:
-        logger.error(f"Error generating Veo clip: {str(e)}")
-        raise
+        except Exception as e:
+            logger.error(f"Error generating Veo clip: {str(e)}")
+            raise
 
 
 def generate_scenes(
@@ -191,7 +204,7 @@ def generate_scenes(
             except (ResourceExhausted, TooManyRequests) as e:
                 if attempt < max_attempts - 1:
                     # If not the last attempt, wait and retry
-                    wait_time = 60 * (attempt + 1)  # Wait longer with each attempt
+                    wait_time = 120 * (attempt + 1)  # Longer wait (was 60s)
                     logger.warning(
                         f"Quota exceeded for scene {i+1}. Waiting {wait_time}s before retry..."
                     )
@@ -207,7 +220,7 @@ def generate_scenes(
 
         # Always add a pause between scenes to avoid hitting quotas too quickly
         if i < len(prompts) - 1:  # No need to wait after the last scene
-            pause_time = 15  # 15 second pause between scenes
+            pause_time = 30  # Increased from 15 to 30 seconds
             logger.info(
                 f"Pausing for {pause_time}s between scenes to respect quota limits..."
             )

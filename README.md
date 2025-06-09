@@ -367,3 +367,50 @@ This application can use Google's Veo AI for video generation. To use Veo, ensur
 3. The `google-cloud-aiplatform[preview]` package is installed (critical for accessing `vertexai.preview.generative_models`)
 
 The Veo AI integration provides high-quality video generation directly from prompts.
+
+## Veo API Usage and Troubleshooting
+
+### Working with Google Veo API Rate Limits
+
+This project now supports both Veo 3.0 and Veo 2.0 models. Due to strict quota limits (typically 10 requests per minute), 
+the code includes intelligent rate limiting and retry logic.
+
+#### Common Veo API Issues
+
+Google's preview models sometimes return **HTTP 429** for requests that never even reach the quota counter.
+If you're experiencing "429 Quota exceeded" errors with 0% quota usage shown, check for these issues:
+
+1. **Project not on Veo allow-list**: Every call returns 429 with 0 usage shown
+2. **Wrong region** (anything except `us-central1`): Same 429, counter never moves
+3. **Service-agent lacks `aiplatform.user` role**: Same 429
+4. **Base-model blocked by safety tier**: Same 429; quota page shows limit 10 but usage 0
+
+### Testing Veo API Connection
+
+To test your Veo API connection without generating actual videos (using minimal tokens):
+
+```bash
+# Test with Veo 2.0 model
+./scripts/test_veo_2.sh
+
+# Test actual video generation
+python scripts/test_veo_video.py
+```
+
+### Fixing Python Environment Issues
+
+If you encounter Python environment or import errors when running the scripts, try:
+
+```bash
+# Fix Python environment variables and run a command
+source scripts/fix_python_env.sh python scripts/test_veo_2.sh
+```
+
+The fix_python_env.sh script:
+- Unsets problematic PYTHONHOME and PYTHONPATH variables
+- Ensures the correct Python interpreter is used
+- Can run commands directly with the fixed environment
+
+You can also use VSCode/Cursor settings to configure the Python environment:
+- Create `.vscode/settings.json` with the correct Python interpreter path
+- Configure terminal environment variables

@@ -10,19 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from caption_generator import add_captions_to_video, create_caption_images
-from PIL import Image, ImageDraw, ImageFont
-
-# Use our compatibility module instead of direct imports
-from app.services.moviepy_compat import (
-    MOVIEPY_AVAILABLE,
-    AudioFileClip,
-    ImageClip,
-    VideoFileClip,
-    concatenate_videoclips,
-    resize,
-)
-
+# Remove MoviePy dependencies
 # Add new imports for Veo integration
 try:
     from google.api_core.exceptions import (
@@ -33,7 +21,7 @@ try:
     from google.cloud import storage
     from vertexai.preview.generative_models import GenerationConfig, GenerativeModel
 
-    # Decoupled from MoviePy availability
+    # Set to True to enable Veo
     VEOAI_AVAILABLE = True
 except ImportError:
     VEOAI_AVAILABLE = False
@@ -757,27 +745,132 @@ def create_veo_video(story: str, output_path: str, num_scenes: int = 5) -> str:
             logger.info("Scene splitter not available, using legacy scene enhancement")
             scenes = enhance_story_for_video_scenes(story, num_scenes)
 
-        # Step 2: Generate videos for each scene
+        # Step 2: Generate videos for each scene - with rate limiting
         logger.info("Generating individual scene videos...")
         video_paths = []
 
-        for i, scene in enumerate(scenes):
-            logger.info(f"Generating video for scene {i+1}/{len(scenes)}")
-            try:
-                prompt = scene["veo_prompt"] if "veo_prompt" in scene else scene
-                video_path = make_veo_clip(
-                    prompt=prompt,
-                    duration_sec=(
-                        8 if i < len(scenes) - 1 else 5
-                    ),  # Last clip is shorter
-                    aspect="16:9",
-                    output_dir=scenes_dir,
+        # Try to use VeoService for better quota management
+        try:
+            from app.services.storage_service import StorageService
+            from app.services.veo_service import VeoService
+
+            # Initialize services
+            storage_service = StorageService()
+            veo_service = VeoService(storage_service)
+
+            # Check if Veo service is available
+            if veo_service.is_available():
+                logger.info(
+                    "Using VeoService for scene generation with quota management"
                 )
-                video_paths.append(video_path)
-                logger.info(f"Scene {i+1} video generated: {video_path}")
-            except Exception as e:
-                logger.error(f"Error generating video for scene {i+1}: {str(e)}")
-                # Continue with remaining scenes
+
+                for i, scene in enumerate(scenes):
+                    logger.info(f"Generating video for scene {i+1}/{len(scenes)}")
+
+                    # Get prompt from scene
+                    prompt = scene["veo_prompt"] if "veo_prompt" in scene else scene
+
+                    # Generate with quota awareness
+                    duration = 8 if i < len(scenes) - 1 else 5  # Last clip is shorter
+
+                    # Make multiple attempts with backoff
+                    max_attempts = 3
+                    for attempt in range(max_attempts):
+                        try:
+                            # Generate video with VeoService
+                            video_path = veo_service.generate_video(
+                                prompt=prompt,
+                                duration_seconds=duration,
+                                aspect_ratio="16:9",
+                                check_quota=True,  # Enable quota checking
+                                use_cache=True,  # Use cache if available
+                            )
+
+                            if video_path:
+                                video_paths.append(video_path)
+                                logger.info(
+                                    f"Scene {i+1} video generated: {video_path}"
+                                )
+                                break  # Success, exit retry loop
+                        except Exception as e:
+                            if "quota" in str(e).lower() and attempt < max_attempts - 1:
+                                # If quota error and not last attempt, wait longer
+                                wait_time = 60 * (
+                                    attempt + 1
+                                )  # Increase wait time with each attempt
+                                logger.warning(
+                                    f"Quota exceeded. Waiting {wait_time}s before retry..."
+                                )
+                                time.sleep(wait_time)
+                            else:
+                                # Other error or last attempt, log and continue to next scene
+                                logger.error(
+                                    f"Error generating video for scene {i+1} (attempt {attempt+1}): {str(e)}"
+                                )
+                                if attempt == max_attempts - 1:
+                                    logger.warning(
+                                        f"Skipping scene {i+1} after {max_attempts} failed attempts"
+                                    )
+
+                    # Add mandatory pause between scenes to avoid hitting quotas
+                    if i < len(scenes) - 1:  # No need to wait after the last scene
+                        logger.info("Pausing between scenes to respect quota limits...")
+                        time.sleep(10)  # Short pause between scenes
+            else:
+                raise ImportError("VeoService not available")
+        except ImportError:
+            # Fall back to direct make_veo_clip calls with manual rate limiting
+            logger.info(
+                "VeoService not available, using make_veo_clip with manual rate limiting"
+            )
+
+            for i, scene in enumerate(scenes):
+                logger.info(f"Generating video for scene {i+1}/{len(scenes)}")
+                try:
+                    prompt = scene["veo_prompt"] if "veo_prompt" in scene else scene
+
+                    # Make multiple attempts with backoff
+                    max_attempts = 3
+                    for attempt in range(max_attempts):
+                        try:
+                            video_path = make_veo_clip(
+                                prompt=prompt,
+                                duration_sec=(
+                                    8 if i < len(scenes) - 1 else 5
+                                ),  # Last clip is shorter
+                                aspect="16:9",
+                                output_dir=scenes_dir,
+                            )
+                            video_paths.append(video_path)
+                            logger.info(f"Scene {i+1} video generated: {video_path}")
+                            break  # Success, exit retry loop
+                        except Exception as e:
+                            if "quota" in str(e).lower() and attempt < max_attempts - 1:
+                                # If quota error and not last attempt, wait longer
+                                wait_time = 60 * (
+                                    attempt + 1
+                                )  # Increase wait time with each attempt
+                                logger.warning(
+                                    f"Quota exceeded. Waiting {wait_time}s before retry..."
+                                )
+                                time.sleep(wait_time)
+                            else:
+                                # Other error or last attempt, log and continue to next scene
+                                logger.error(
+                                    f"Error generating video for scene {i+1} (attempt {attempt+1}): {str(e)}"
+                                )
+                                if attempt == max_attempts - 1:
+                                    logger.warning(
+                                        f"Skipping scene {i+1} after {max_attempts} failed attempts"
+                                    )
+                except Exception as e:
+                    logger.error(f"Unexpected error preparing scene {i+1}: {str(e)}")
+                    # Continue with remaining scenes
+
+                # Add mandatory pause between scenes to avoid hitting quotas
+                if i < len(scenes) - 1:  # No need to wait after the last scene
+                    logger.info("Pausing between scenes to respect quota limits...")
+                    time.sleep(15)  # Pause between scenes to avoid quota limits
 
         if not video_paths:
             raise ValueError("No scene videos were generated")

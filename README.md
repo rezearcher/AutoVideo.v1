@@ -367,3 +367,92 @@ This application can use Google's Veo AI for video generation. To use Veo, ensur
 3. The `google-cloud-aiplatform[preview]` package is installed (critical for accessing `vertexai.preview.generative_models`)
 
 The Veo AI integration provides high-quality video generation directly from prompts.
+
+## Veo API Usage and Troubleshooting
+
+### Working with Google Veo API Rate Limits
+
+This project now supports both Veo 3.0 and Veo 2.0 models. Due to strict quota limits (typically 10 requests per minute), 
+the code includes intelligent rate limiting and retry logic.
+
+### Why You Get "429 Quota Exceeded" With 0% Usage
+
+Google's preview models sometimes return **HTTP 429** for requests that never even reach the quota counter. This confusing behavior means your requests are being blocked by hidden gates:
+
+| Hidden Gate | How It Manifests | Fix |
+| ----------- | ---------------- | --- |
+| **Project not on Veo allow-list** | Every call → `429` with *0%* usage shown | Fill out the Veo preview access form in Model Garden |
+| **Wrong region** (not `us-central1`) | Same 429, counter never moves | Hard-code `vertexai.init(location="us-central1")` |
+| **Service-agent lacks `aiplatform.user` role** | Same 429 | Grant the role with `gcloud projects add-iam-policy-binding` |
+| **Base-model blocked by safety tier** | Same 429; limit shows 10 but usage 0 | Contact Google support for tier access |
+
+### Diagnosing Hidden Gates
+
+To diagnose which gate is blocking your project, run:
+
+```bash
+# Check all possible gates and get detailed diagnostics
+./scripts/veo_gate_check.py
+
+# Check and try to fix service account permissions
+./scripts/veo_gate_check.py --fix-service-account
+```
+
+The script will check:
+1. If the Veo models are visible to your project
+2. If your service account has the required roles
+3. If your code is using the correct region
+4. If a zero-token API call succeeds
+
+### Action Plan When Hitting 429 Errors
+
+If you're getting 429 errors with 0% usage:
+
+1. **Verify project allow-list status**:
+   ```bash
+   gcloud ai models describe \
+     projects/$PROJECT/locations/us-central1/publishers/google/models/veo-2.0-generate-001 \
+     --format='value(name)'
+   ```
+   If this fails, apply for access in Model Garden.
+
+2. **Force region to `us-central1`** in all code
+
+3. **Grant the service-agent role**:
+   ```bash
+   SA="service-$(gcloud projects describe $PROJECT --format='value(projectNumber)')@gcp-sa-aiplatform.iam.gserviceaccount.com"
+   gcloud projects add-iam-policy-binding $PROJECT \
+     --member="serviceAccount:$SA" --role="roles/aiplatform.user"
+   ```
+
+4. **Test with zero-token approach** using our diagnostic tools.
+
+### Testing Veo API Connection
+
+To test your Veo API connection without generating actual videos (using minimal tokens):
+
+```bash
+# Test with Veo 2.0 model
+./scripts/test_veo_2.sh
+
+# Test actual video generation
+python scripts/test_veo_video.py
+```
+
+### Fixing Python Environment Issues
+
+If you encounter Python environment or import errors when running the scripts, try:
+
+```bash
+# Fix Python environment variables and run a command
+source scripts/fix_python_env.sh python scripts/test_veo_2.sh
+```
+
+The fix_python_env.sh script:
+- Unsets problematic PYTHONHOME and PYTHONPATH variables
+- Ensures the correct Python interpreter is used
+- Can run commands directly with the fixed environment
+
+You can also use VSCode/Cursor settings to configure the Python environment:
+- Create `.vscode/settings.json` with the correct Python interpreter path
+- Configure terminal environment variables
